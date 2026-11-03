@@ -1,0 +1,43 @@
+{
+  "version": "draft-1",
+  "note": "Initial rule list. The PI will replace this file with the final version; the site reads only the fields below. label: the label the rule supports (normal / anomaly / unknown). note_required: a note must be written when this rule is chosen.",
+  "rules": [
+    { "id": "B-P01", "dataset": "bgl", "label": "anomaly", "title": "TLB error interrupt", "text": "KERNEL FATAL “… TLB error interrupt” (published category KERNDTLB).", "note_required": false },
+    { "id": "B-P02", "dataset": "bgl", "label": "anomaly", "title": "Data storage interrupt", "text": "KERNEL FATAL “data storage interrupt” (KERNSTOR).", "note_required": false },
+    { "id": "B-P03", "dataset": "bgl", "label": "anomaly", "title": "ciod: error reading message prefix after LOAD_MESSAGE", "text": "APP FATAL “ciod: Error reading message prefix after LOAD_MESSAGE on CioStream socket to …” (APPSEV).", "note_required": false },
+    { "id": "B-P04", "dataset": "bgl", "label": "anomaly", "title": "Lustre mount FAILED", "text": "KERNEL FATAL “Lustre mount FAILED : … ” (KERNMNTF).", "note_required": false },
+    { "id": "B-P05", "dataset": "bgl", "label": "anomaly", "title": "rts: kernel terminated", "text": "KERNEL FATAL “rts: kernel terminated for reason …” (KERNTERM).", "note_required": false },
+    { "id": "B-P06", "dataset": "bgl", "label": "anomaly", "title": "Error receiving packet on tree network", "text": "KERNEL FATAL “Error receiving packet on tree network, expecting type … instead of type …” (KERNREC).", "note_required": false },
+    { "id": "B-P07", "dataset": "bgl", "label": "anomaly", "title": "ciod: failed to read message prefix on control stream", "text": "APP FATAL “ciod: failed to read message prefix on control stream …” (APPREAD).", "note_required": false },
+    { "id": "B-P08", "dataset": "bgl", "label": "anomaly", "title": "rts panic", "text": "KERNEL FATAL “rts panic! - stopping execution” (KERNRTSP).", "note_required": false },
+    { "id": "B-P09", "dataset": "bgl", "label": "anomaly", "title": "ciod: error reading message prefix (other message types)", "text": "APP FATAL “ciod: Error reading message prefix after <message type> on CioStream socket …” for message types other than LOAD_MESSAGE (APPSEV).", "note_required": false },
+    { "id": "B-P10", "dataset": "bgl", "label": "anomaly", "title": "ciod: node map — No child processes", "text": "APP FATAL “ciod: Error creating node map from file … No child processes” (APPCHILD). Only the reason “No child processes” is an alert; other reasons (Permission denied, Bad address, …) are not.", "note_required": false },
+    { "id": "B-P11", "dataset": "bgl", "label": "anomaly", "title": "Machine check interrupt", "text": "KERNEL FATAL “machine check interrupt …” (KERNMC).", "note_required": false },
+    { "id": "B-P12", "dataset": "bgl", "label": "anomaly", "title": "Kernel panic", "text": "KERNEL FATAL “kernel panic” (KERNPAN).", "note_required": false },
+    { "id": "B-C01", "dataset": "bgl", "label": "anomaly", "title": "Other published BGL alert category", "text": "Matches another alert category from the published BGL alert list. Name the category and quote the key text in the note.", "note_required": true },
+    { "id": "B-N01", "dataset": "bgl", "label": "normal", "title": "Non-alert severity level", "text": "Level is INFO, WARNING, SEVERE, ERROR (anything other than FATAL / FAILURE). All published BGL alerts come from FATAL / FAILURE levels, so such lines are normal even if they contain words like “error”.", "note_required": false },
+    { "id": "B-D0", "dataset": "bgl", "label": "normal", "title": "FATAL / FAILURE but no alert rule matches", "text": "The level is FATAL or FAILURE but the message matches none of the published alert rules. Explain in the note why you consider it routine.", "note_required": true },
+
+    { "id": "T-P01", "dataset": "tb", "label": "anomaly", "title": "VAPI: EVAPI_process_local_mad failed", "text": "kernel “[KERNEL_IB][…] … EVAPI_process_local_mad failed, return code = … (Fatal error (Local Catastrophic Error))” (VAPI).", "note_required": false },
+    { "id": "T-P02", "dataset": "tb", "label": "anomaly", "title": "PBS_CON: connection refused", "text": "pbs_mom “Connection refused (111) in open_demux …” (PBS_CON).", "note_required": false },
+    { "id": "T-P03", "dataset": "tb", "label": "anomaly", "title": "MPT: SCSI task abort", "text": "kernel “mptscsih: ioc0: attempting task abort! …” (MPT).", "note_required": false },
+    { "id": "T-P04", "dataset": "tb", "label": "anomaly", "title": "EXT_FS: ext3 error", "text": "kernel “EXT3-fs error (device …): … ” (EXT_FS).", "note_required": false },
+    { "id": "T-P05", "dataset": "tb", "label": "anomaly", "title": "CPU: losing ticks", "text": "kernel “Losing some ticks… checking if CPU frequency changed.” (CPU).", "note_required": false },
+    { "id": "T-P06", "dataset": "tb", "label": "anomaly", "title": "SCSI: rejecting I/O to offline device", "text": "kernel “scsi…: rejecting I/O to offline device” (SCSI).", "note_required": false },
+    { "id": "T-P07", "dataset": "tb", "label": "anomaly", "title": "ECC: memory error", "text": "Server Administrator memory-device ECC error report (ECC).", "note_required": false },
+    { "id": "T-P08", "dataset": "tb", "label": "anomaly", "title": "PBS_BFD: bad file descriptor", "text": "pbs_mom “Bad file descriptor (9) in tm_request …” (PBS_BFD).", "note_required": false },
+    { "id": "T-P09", "dataset": "tb", "label": "anomaly", "title": "CHK_DSK: disk fault", "text": "check-disks “… Fault Status assert …” (CHK_DSK).", "note_required": false },
+    { "id": "T-P10", "dataset": "tb", "label": "anomaly", "title": "NMI received", "text": "kernel “Uhhuh. NMI received …” (NMI).", "note_required": false },
+    { "id": "T-D0", "dataset": "tb", "label": "normal", "title": "Routine operation (no alert rule matches)", "text": "Matches none of the published alert rules and records the normal result of a routine operation. Say what the operation is in the note (e.g. “routine service start/stop”).", "note_required": true },
+
+    { "id": "H-N01", "dataset": "hdfs", "label": "normal", "title": "Complete normal lifecycle", "text": "Only allocation, write (3 replicas), read / verify and delete events; replica counts are consistent and deletion is complete. A different event order does not matter. “Got exception while serving” during the read phase is part of normal reads.", "note_required": false },
+    { "id": "H-N02", "dataset": "hdfs", "label": "normal", "title": "Normal lifecycle without deletion", "text": "Complete, consistent write (and possibly read / verify) of all replicas; the block was simply never deleted within the log.", "note_required": false },
+    { "id": "H-N03", "dataset": "hdfs", "label": "normal", "title": "Normal re-replication", "text": "Extra replica transfer (ask … to replicate, Starting thread to transfer, Transmitted block) that completes consistently.", "note_required": false },
+    { "id": "H-A01", "dataset": "hdfs", "label": "anomaly", "title": "Write / receive exception", "text": "Exceptions on the write path: writeBlock … received exception, PacketResponder … Exception / Interrupted, Exception in receiveBlock, Exception writing block to mirror, Receiving empty packet.", "note_required": false },
+    { "id": "H-A02", "dataset": "hdfs", "label": "anomaly", "title": "Inconsistent replica bookkeeping", "text": "Redundant addStoredBlock, addStoredBlock for a block that does not belong to any file, replica counts that do not match, or a block removed from neededReplications.", "note_required": false },
+    { "id": "H-A03", "dataset": "hdfs", "label": "anomaly", "title": "Delete / transfer failure", "text": "Unexpected error trying to delete block (BlockInfo not found), Failed to transfer, PendingReplicationMonitor timed out, block is not valid / cannot be written to.", "note_required": false },
+
+    { "id": "U-01", "dataset": "*", "label": "unknown", "title": "Cannot decide", "text": "The rules and the visible evidence do not settle the label. Describe what is missing in the note.", "note_required": true },
+    { "id": "X-01", "dataset": "*", "label": "*", "title": "Other reason", "text": "None of the listed rules applies. Explain your reasoning in the note.", "note_required": true }
+  ]
+}

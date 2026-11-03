@@ -1,0 +1,1 @@
+{"g":258,"id":"Bd77394928399","messages":[{"v":[],"n":1,"ex":[283842,"1134059235 2005.12.08 NULL 2005-12-08-08.27.15.119705 NULL RAS MMCS INFO mmcs_db_server has been started: ./mmcs_db_server --useDatabase BGL --dbproperties db.properties --iolog /bgl/BlueLight/logs/BGL --reconnect-blocks all --shutdown-timeout 120 --shutdown-timeout 240"],"occ":[283842]}]}

@@ -1,0 +1,1 @@
+{"g":675,"id":"Tdd91299a9f7c","messages":[{"v":["checking"],"n":8,"ex":[427260,"1133898959 2005.12.06 en189 Dec 6 11:55:59 en189/en189 kernel: checking if image is initramfs...it isn't (no cpio magic); looks like an initrd"],"occ":[427260,427562,428091,428528,428573,429112,429164,429776]}]}

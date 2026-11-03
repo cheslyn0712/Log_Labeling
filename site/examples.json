@@ -1,0 +1,46 @@
+{
+  "note": "Worked examples. These groups are excluded from every queue, group count, member count, time total and accuracy figure.",
+  "examples": [
+    {
+      "dataset": "bgl",
+      "id": "B2940ad74e929",
+      "title": "BGL worked example",
+      "summary": "Template <*> L3 <*> error(s) (dcr <*> detected and corrected — component KERNEL, level INFO.",
+      "sample": "… RAS KERNEL INFO 1 L3 EDRAM error(s) (dcr 0x0157) detected and corrected",
+      "steps": [
+        "Open the Messages tab. There are about 100 distinct raw messages in this group.",
+        "Open the Fields tab. Field 1 is a count (1, 2, 3 …) and field 3 is a register address such as 0x0157). Both are only identifiers: tick “Instance info” for each. The messages then collapse into just two kinds: EDRAM and directory.",
+        "Click a few messages of each kind to read their raw lines, then open the context of one line."
+      ],
+      "decision": { "mode": "propagate", "label": "normal", "rules": ["B-N01"], "note": "" },
+      "explanation": "The level is INFO, not FATAL or FAILURE, and the message says the error was “detected and corrected” — a routine counter report. All BGL alerts come from FATAL / FAILURE levels, so an INFO line is normal even when it contains the word “error”."
+    },
+    {
+      "dataset": "tb",
+      "id": "Tc15871ca049d",
+      "title": "Thunderbird worked example",
+      "summary": "Template <*> <*> succeeded — service acpid.",
+      "sample": "acpid: acpid startup succeeded  /  acpid: acpid shutdown succeeded",
+      "steps": [
+        "Open the Fields tab. Field 2 takes the values startup / shutdown. It is a key field (not instance info), so look at both values.",
+        "Click each of the two messages to read their raw lines.",
+        "Open the context of a line: it sits in a run of service start / stop records written while a node boots or shuts down."
+      ],
+      "decision": { "mode": "propagate", "label": "normal", "rules": ["T-D0"], "note": "Routine service start/stop" },
+      "explanation": "No published alert rule matches. By definition this is the successful result of a routine operation."
+    },
+    {
+      "dataset": "hdfs",
+      "id": "H90039c1fc384",
+      "title": "HDFS worked example",
+      "summary": "Count vector: allocate T22×1; write three replicas T5, T9, T11, T26 ×3 each; read T3×1 and T4 (Got exception while serving) ×2; verify T2×3; delete T23, T21 ×3 each.",
+      "sample": "",
+      "steps": [
+        "Open the full log of 2–3 blocks and compare two of them. Their event orders differ (dozens of different orders), but every one is a complete lifecycle: write 3 replicas → read and verify → delete 3 replicas.",
+        "Note that “Got exception while serving” appears in the read phase — it is part of the read events."
+      ],
+      "decision": { "mode": "propagate", "label": "normal", "rules": ["H-N01"], "note": "" },
+      "explanation": "The blocks contain only write, read/verify and delete events; the replica count is consistent (3 each) and deletion is complete. A different event order does not change the conclusion."
+    }
+  ]
+}

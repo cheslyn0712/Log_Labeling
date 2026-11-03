@@ -1,0 +1,1 @@
+{"g":761,"id":"T01f144133b2b","messages":[{"v":["1104","75"],"n":1,"ex":[216641,"1132700925 2005.11.22 bn216 Nov 22 15:08:45 bn216/bn216 Server Administrator: Instrumentation Service EventID: 1104 Fan sensor detected a failure value Sensor location: BMC FAN 4A RPM Chassis location: Main System Chassis Previous state was: Unknown Fan sensor value (in RPM): 75"],"occ":[216641]}]}

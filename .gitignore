@@ -1,0 +1,15 @@
+# Whitelist: only the public site and repo metadata are tracked.
+# Everything else in this folder (raw data package, answer keys, PI-only tools,
+# pi_private/ passphrases, instructions) must never be committed.
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/.github/
+!/site/
+
+# defensive: never track these even if moved under site/
+pi_private/
+**/pi_private/
+*.zip
+**/gt/

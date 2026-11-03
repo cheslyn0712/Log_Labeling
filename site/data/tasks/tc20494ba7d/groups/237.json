@@ -1,0 +1,1 @@
+{"g":237,"id":"Be8846a13ce6f","messages":[{"v":[],"n":2,"ex":[255717,"1132316240 2005.11.18 NULL 2005-11-18-04.17.20.993984 NULL RAS BGLMASTER INFO BGLMaster has been started: ./BGLMaster --consoleip 127.0.0.1 --consoleport 32035 --configfile bglmaster.init --autorestart y --db2profile /u/bgdb2cli/sqllib/db2profile --dbproperties db.properties"],"occ":[255717,283839]}]}

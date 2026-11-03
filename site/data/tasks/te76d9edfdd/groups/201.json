@@ -1,0 +1,1 @@
+{"g":201,"id":"T9608234ffc0f","messages":[{"v":["can't"],"n":3,"ex":[2517,"1134853531 2005.12.17 bn544 Dec 17 13:05:31 bn544/bn544 ntpd[2284]: can't open /var/lib/ntp/drift.TEMP: Read-only file system"],"occ":[2517,5711,12353]}]}
