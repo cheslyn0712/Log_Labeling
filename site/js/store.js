@@ -1,6 +1,11 @@
 // Per-student state in localStorage. Every action is saved immediately.
+// Several windows / tabs may be open at once: every write first re-reads what the
+// other windows saved, then applies only this window's change (read-modify-write),
+// so no window overwrites another's progress.
 const PREFIX = 'loglabel:v1:';
 export const SCHEMA = 1;
+
+export const TAB_ID = Math.random().toString(36).slice(2, 8);
 
 export function storageAvailable() {
   try {
@@ -21,7 +26,6 @@ export function getCurrentName() { try { return localStorage.getItem(PREFIX + 'c
 export function setCurrentName(n) {
   if (n) localStorage.setItem(PREFIX + 'current', n); else localStorage.removeItem(PREFIX + 'current');
 }
-export function hasData(name) { try { return !!localStorage.getItem(PREFIX + 'user:' + name); } catch { return false; } }
 
 function fresh(name, dataVersion) {
   const now = Date.now();
@@ -32,22 +36,52 @@ function fresh(name, dataVersion) {
   };
 }
 
+export function uid(prefix) { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
 export class Store {
   constructor(name, dataVersion) {
     this.name = name;
     this.key = PREFIX + 'user:' + name;
     this.listeners = new Set();
+    this.externalListeners = new Set();
+    this.hooks = new Set();      // run on every write with the fresh state (timer deltas)
+    this.pendingLog = [];
     this.saveError = null;
-    const raw = localStorage.getItem(this.key);
-    this.state = raw ? JSON.parse(raw) : fresh(name, dataVersion);
-    this.versionMismatch = !!raw && this.state.dataVersion !== dataVersion;
-    if (!raw) { this.log('create', {}); this.save(); }
+    this.wiped = false;
+    this.raw = localStorage.getItem(this.key);
+    this.state = this.raw ? JSON.parse(this.raw) : fresh(name, dataVersion);
+    this.versionMismatch = !!this.raw && this.state.dataVersion !== dataVersion;
+    if (!this.raw) { this.pendingLog.push([Date.now(), 'create', {}]); this.write(); }
+    this._onStorage = (e) => {
+      if (e.key !== this.key) return;
+      if (e.newValue === null) { this.wiped = true; for (const f of this.externalListeners) f('wiped'); return; }
+      this.reload();
+      for (const f of this.externalListeners) f('changed');
+    };
+    window.addEventListener('storage', this._onStorage);
   }
 
-  save() {
+  close() { window.removeEventListener('storage', this._onStorage); this.hooks.clear(); }
+
+  // pick up what other windows saved
+  reload() {
+    const raw = localStorage.getItem(this.key);
+    if (raw === null) { if (this.raw !== null) this.wiped = true; return false; }
+    if (raw === this.raw) return false;
+    this.raw = raw;
+    this.state = JSON.parse(raw);
+    return true;
+  }
+
+  write() {
+    if (this.wiped) return;
+    for (const f of this.hooks) f(this.state);
+    if (this.pendingLog.length) { this.state.log.push(...this.pendingLog); this.pendingLog = []; }
     this.state.updatedAt = Date.now();
+    const s = JSON.stringify(this.state);
     try {
-      localStorage.setItem(this.key, JSON.stringify(this.state));
+      localStorage.setItem(this.key, s);
+      this.raw = s;
       this.saveError = null;
     } catch (e) {
       this.saveError = e;
@@ -55,23 +89,38 @@ export class Store {
     for (const f of this.listeners) f();
   }
 
+  // flush pending log entries / timer deltas
+  save() { this.reload(); this.write(); }
+
   onChange(f) { this.listeners.add(f); return () => this.listeners.delete(f); }
+  onExternal(f) { this.externalListeners.add(f); return () => this.externalListeners.delete(f); }
 
-  log(type, data) { this.state.log.push([Date.now(), type, data || {}]); }
+  // log entry saved with the next write
+  log(type, data) { this.pendingLog.push([Date.now(), type, data || {}]); }
 
+  /**
+   * Apply one action to the freshest state and save it.
+   * mutate(state) must look objects up from `state` (or via this.task / this.group) — never
+   * use objects fetched before the call. Returning false cancels the action (nothing is saved).
+   */
   act(type, data, mutate) {
-    if (mutate) mutate(this.state);
-    this.log(type, data);
-    this.save();
+    this.reload();
+    if (mutate) {
+      const r = mutate(this.state);
+      if (r === false) { this.reload(); for (const f of this.listeners) f(); return false; }
+    }
+    this.pendingLog.push([Date.now(), type, data || {}]);
+    this.write();
+    return true;
   }
 
   task(ref) { return this.state.tasks[ref]; }
 
   ensureTask(ref, order) {
     if (!this.state.tasks[ref]) {
-      this.state.tasks[ref] = { startedAt: Date.now(), order, groups: {}, unlocked: null, reviewMs: 0, seq: 0 };
-      this.log('task-start', { ref });
-      this.save();
+      this.act('task-start', { ref }, (s) => {
+        if (!s.tasks[ref]) s.tasks[ref] = { startedAt: Date.now(), order, groups: {}, reviewMs: 0 };
+      });
     }
     return this.state.tasks[ref];
   }
@@ -83,13 +132,12 @@ export class Store {
   }
 
   backupPayload() {
+    this.save();
     return { kind: 'labeling-backup', schema: SCHEMA, name: this.name, dataVersion: this.state.dataVersion, exportedAt: Date.now(), state: this.state };
   }
 
   markBackup() {
-    this.state.backup = { lastAt: Date.now(), groupsSince: 0 };
-    this.log('backup-export', {});
-    this.save();
+    this.act('backup-export', {}, (s) => { s.backup = { lastAt: Date.now(), groupsSince: 0 }; });
   }
 
   // returns error string or null
@@ -98,36 +146,14 @@ export class Store {
     if (obj.name !== this.name) return `This backup belongs to “${obj.name}”, not to ${this.name}. Import refused.`;
     if (obj.dataVersion !== dataVersion || obj.state.dataVersion !== dataVersion) return `This backup was made for data version ${obj.dataVersion}; the site now serves ${dataVersion}. Import refused — contact the PI.`;
     this.state = obj.state;
-    this.state.log.push([Date.now(), 'backup-import', { exportedAt: obj.exportedAt }]);
-    this.save();
+    this.pendingLog.push([Date.now(), 'backup-import', { exportedAt: obj.exportedAt }]);
+    this.wiped = false;
+    this.write();
     return null;
   }
 
   wipe() {
+    this.wiped = true;
     localStorage.removeItem(this.key);
   }
-}
-
-// One open tab per browser, so two tabs cannot overwrite each other's progress.
-const TAB_KEY = PREFIX + 'tab';
-const tabId = Math.random().toString(36).slice(2);
-export function claimTab(force) {
-  try {
-    const cur = JSON.parse(localStorage.getItem(TAB_KEY) || 'null');
-    if (!force && cur && cur.id !== tabId && Date.now() - cur.t < 8000) return false;
-    localStorage.setItem(TAB_KEY, JSON.stringify({ id: tabId, t: Date.now() }));
-    return true;
-  } catch { return true; }
-}
-export function heartbeatTab(onLost) {
-  setInterval(() => {
-    try {
-      const cur = JSON.parse(localStorage.getItem(TAB_KEY) || 'null');
-      if (cur && cur.id !== tabId) { onLost(); return; }
-      localStorage.setItem(TAB_KEY, JSON.stringify({ id: tabId, t: Date.now() }));
-    } catch { /* ignore */ }
-  }, 3000);
-  window.addEventListener('pagehide', () => {
-    try { const cur = JSON.parse(localStorage.getItem(TAB_KEY) || 'null'); if (cur && cur.id === tabId) localStorage.removeItem(TAB_KEY); } catch { /* ignore */ }
-  });
 }

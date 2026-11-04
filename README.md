@@ -1,6 +1,6 @@
 # Log Labeling Study
 
-A static website for a log-labeling study. Students enter their name, work through one worked example per dataset (BGL, Thunderbird, HDFS), and then label groups of raw log lines (or HDFS blocks) semi-automatically: one judgment for a whole group, a split by a field value, or judgments on selected messages. The site records effective labeling time, keeps all progress in the student's own browser, and computes accuracy once the PI hands out a per-task passphrase.
+A static website for a log-labeling study. Students enter their name, read one worked example per dataset (BGL, Thunderbird, HDFS), and then label groups of raw log lines (or HDFS blocks) semi-automatically: one judgment for a whole group, a split by a field value, or judgments on ticked messages. Submitting a group locks it and immediately shows its true labels. The site times effective labeling with a visible clock and keeps all progress in the student's own browser (any number of windows can be open).
 
 There is no server and no database. Everything under `site/` is served as-is by GitHub Pages.
 
@@ -8,8 +8,8 @@ There is no server and no database. Everything under `site/` is served as-is by 
 
 | URL | Who | What |
 |---|---|---|
-| `index.html` | students | name entry, tasks, worked examples, labeling, backup, report, answer review |
-| `pi.html` | PI | load the students' report files, paste the passphrases, recompute every metric, export CSV |
+| `index.html` | students | name entry, tasks, worked examples, labeling (answer shown after each submitted group), backup, report |
+| `pi.html` | PI | load the students' report files, recompute every metric, export CSV |
 
 ## Run locally
 
@@ -40,12 +40,12 @@ site/
 
 ## Data
 
-`site/data/` is produced by the PI's private build script and committed as-is. It contains, per task: a group index, one file per group, raw lines in files of 2,000 lines (HDFS: block traces), and the reference answers encrypted with AES-256-GCM (key derived with PBKDF2-SHA256, 310,000 iterations). Task names in the data are opaque keys and display names only. Passphrases are not in this repository.
+`site/data/` is produced by the PI's private build script and committed as-is. It contains, per task: a group index, one file per group, raw lines in files of 2,000 lines (HDFS: block traces), and one answer file per group. Answer files are AES-256-GCM encrypted only so they cannot be read at a glance; the site fetches a group's answer after the group is submitted. Task names in the data are opaque keys and display names only.
 
-Rebuilding the data generates new passphrases. Students' saved progress stays valid as long as the data version (shown on the PI page) does not change.
+The build is deterministic, so students' saved progress stays valid as long as the data version (shown on the PI page) does not change.
 
 ## Notes for students
 
 - Use your own name; it only separates your work from other students' in the same browser.
 - Do not use a private / incognito window and do not clear browsing data. Export a backup regularly.
-- The datasets and their labels are public. The answers are encrypted only to prevent accidental viewing.
+- The datasets and their labels are public. Look at a group's answer only after submitting it.

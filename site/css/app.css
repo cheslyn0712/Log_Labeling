@@ -321,3 +321,64 @@ a.qrow:hover { background: var(--accent-2); text-decoration: none; }
   .task-card { flex-wrap: wrap; }
   .gbar { top: 0; position: static; flex-wrap: wrap; }
 }
+
+/* task page header + example strip */
+.task-head { display: flex; gap: 20px; align-items: flex-start; justify-content: space-between; margin: 4px 0 12px; }
+.task-head > div { flex: 1; min-width: 0; }
+.task-head h1 { margin-bottom: 4px; }
+.example-strip { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--warn-line); background: var(--warn-bg); border-radius: var(--radius); color: var(--text); margin-bottom: 8px; }
+.example-strip:hover { text-decoration: none; border-color: var(--accent); }
+.example-strip.seen { border-color: var(--line); background: var(--panel); }
+.ex-step { width: 26px; height: 26px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 700; background: var(--panel); color: var(--unknown); border: 1.5px solid currentColor; }
+.example-strip.seen .ex-step { color: var(--normal); }
+.ex-body { flex: 1; min-width: 0; }
+.ex-sum { color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-intro { margin: 10px 16px 0; }
+.qrow.next { background: var(--accent-2); }
+.qrow.next .qstat { color: var(--accent); font-weight: 650; }
+.task-example { display: inline-block; margin-top: 6px; font-size: 12.5px; padding: 2px 8px; border-radius: 4px; background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--text); }
+.task-example.seen { background: transparent; border-color: transparent; color: var(--normal); padding-left: 0; }
+@media (max-width: 720px) { .task-head { flex-direction: column; } }
+
+/* timer clock in the group bar */
+.clock { display: flex; align-items: center; gap: 8px; padding: 3px 6px 3px 12px; border: 1px solid var(--line); border-radius: 99px; background: var(--panel-2); }
+.clock .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.clock.st-timing .dot { background: var(--normal); box-shadow: 0 0 0 3px var(--normal-bg); }
+.clock.st-paused .dot { background: var(--unknown); }
+.clock.st-idle .dot { background: var(--anomaly); }
+.clock-main { font-size: 18px; font-weight: 700; letter-spacing: .02em; min-width: 58px; }
+.clock.st-idle .clock-main, .clock.st-paused .clock-main { color: var(--muted); }
+.clock-label { color: var(--muted); }
+
+/* task page stats */
+.task-stats { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; margin: 2px 0 4px; }
+.task-stats strong { font-size: 15px; }
+.qres { font-weight: 700; font-size: 12px; }
+.qres.ok { color: var(--normal); }
+.qres.bad { color: var(--anomaly); }
+.qstat { width: 150px; }
+
+/* judgment panel (simplified) */
+.jhead { font-weight: 700; font-size: 14px; }
+.scope { display: flex; flex-direction: column; gap: 3px; }
+.scope-title { margin-bottom: 2px; }
+.scope-opt { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; padding: 3px 6px; border-radius: 4px; }
+.scope-opt:hover { background: var(--accent-2); }
+.scope-opt.dim { opacity: .5; cursor: default; }
+.rule-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.rule-chip { border: 1px solid var(--line-strong); background: var(--panel); color: var(--text); border-radius: 99px; padding: 3px 10px; font: inherit; font-size: 12.5px; cursor: pointer; text-align: left; }
+.rule-chip:hover { border-color: var(--accent); }
+.rule-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.rule-chip.on .rule-id { color: #fff; }
+@media (prefers-color-scheme: dark) { .rule-chip.on, .rule-chip.on .rule-id { color: #0e1620; } }
+.note-inp { width: 100%; }
+.reqline { min-height: 18px; }
+.reqline .miss { color: var(--anomaly); }
+.seg-label .seg-btn { padding: 8px 4px; font-size: 13.5px; font-weight: 600; }
+
+/* answer view */
+.verdict { border-radius: var(--radius); padding: 12px 14px; }
+.verdict.good { background: var(--normal-bg); color: var(--normal); }
+.verdict.bad { background: var(--anomaly-bg); color: var(--anomaly); }
+.verdict-big { font-size: 20px; font-weight: 750; margin-bottom: 2px; }
+.verdict .small { color: var(--text); }

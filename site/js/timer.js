@@ -2,25 +2,34 @@
 // Active = page visible AND window focused AND a keyboard/mouse/scroll event in the last 60 s AND not paused.
 // Time is attributed to the current context: labeling a group, reviewing answers, or viewing an example.
 // A raw sample is stored every 15 s so time can be recomputed later with other thresholds.
+// Time is kept as pending deltas and added to the freshest saved state on each write,
+// so several open windows never overwrite each other's time (only the focused one counts).
+import { TAB_ID } from './store.js';
+
 export const IDLE_MS = 60_000;
 export const SAMPLE_MS = 15_000;
 const TICK_MS = 1000;
 const SAVE_MS = 5000;
+const STALE_SESSION_MS = 60_000;
 
 export class Timer {
   constructor() {
     this.store = null;
     this.ctx = null;
-    this.session = null;
+    this.session = null;       // in-memory copy, merged into state.sessions by id
     this.paused = false;
     this.lastInput = Date.now();
     this.lastTick = Date.now();
     this.lastSample = Date.now();
     this.sampleActive = 0;
     this.sampleInputs = 0;
+    this.pending = new Map();  // target key -> ms not yet saved
+    this.pendingSamples = [];
     this.dirty = false;
+    this.seq = 0;
     this.listeners = new Set();
     this._status = 'off';
+    this._hook = (st) => this.applyPending(st);
     // overridable for tests
     this.now = () => Date.now();
     this.isVisible = () => document.visibilityState === 'visible';
@@ -39,15 +48,24 @@ export class Timer {
 
   attach(store) {
     this.endSession('switch-user');
+    this.flush();
+    if (this.store) this.store.hooks.delete(this._hook);
+    this.pending.clear();
+    this.pendingSamples = [];
     this.store = store;
-    // close sessions left open by a crash or a closed tab
-    for (const s of store.state.sessions) if (!s.end) { s.end = s.last || s.start; s.reason = 'recovered'; }
-    store.save();
+    if (!store) return;
+    store.hooks.add(this._hook);
+    // close sessions left open by a crashed or closed window (other open windows keep theirs fresh)
+    const t = this.now();
+    if (store.state.sessions.some((s) => !s.end && t - (s.last || s.start) > STALE_SESSION_MS)) {
+      store.act('recover-sessions', {}, (st) => {
+        for (const s of st.sessions) if (!s.end && t - (s.last || s.start) > STALE_SESSION_MS) { s.end = s.last || s.start; s.reason = 'recovered'; }
+      });
+    }
   }
 
   onChange(f) { this.listeners.add(f); return () => this.listeners.delete(f); }
   emit() { for (const f of this.listeners) f(this._status); }
-
   status() { return this._status; }
 
   computeStatus() {
@@ -58,8 +76,13 @@ export class Timer {
     return 'timing';
   }
 
+  ctxKey(c = this.ctx) {
+    if (!c) return null;
+    return c.type === 'label' ? `L|${c.ref}|${c.g}` : c.type === 'review' ? `R|${c.ref}` : `E|${c.ds}`;
+  }
+
   setContext(ctx) {
-    const same = ctx && this.ctx && ctx.type === this.ctx.type && ctx.ref === this.ctx.ref && ctx.g === this.ctx.g && ctx.ds === this.ctx.ds;
+    const same = ctx && this.ctx && this.ctxKey(ctx) === this.ctxKey();
     if (same) return;
     this.tick();
     this.endSession('leave');
@@ -72,8 +95,7 @@ export class Timer {
   startSession() {
     if (!this.store || !this.ctx) return;
     const t = this.now();
-    this.session = { ctx: this.ctx.type, ref: this.ctx.ref ?? null, g: this.ctx.g ?? null, ds: this.ctx.ds ?? null, start: t, last: t, end: null, activeMs: 0, reason: null };
-    this.store.state.sessions.push(this.session);
+    this.session = { id: `${TAB_ID}-${++this.seq}`, tab: TAB_ID, ctx: this.ctx.type, ref: this.ctx.ref ?? null, g: this.ctx.g ?? null, ds: this.ctx.ds ?? null, start: t, last: t, end: null, activeMs: 0, reason: null };
     this.dirty = true;
   }
 
@@ -82,22 +104,23 @@ export class Timer {
     this.tick();
     this.session.end = this.now();
     this.session.reason = reason;
-    this.session = null;
     this.dirty = true;
     this.flush();
+    this.session = null;
   }
 
   pause() { if (!this.ctx || this.paused) return; this.tick(); this.endSession('pause'); this.paused = true; this.store?.log('pause', {}); this.updateStatus(); }
   resume() { if (!this.paused) return; this.paused = false; this.lastInput = this.now(); this.lastTick = this.now(); this.startSession(); this.store?.log('resume', {}); this.updateStatus(); }
 
-  target() {
+  // effective ms of the current context (saved + not yet saved)
+  displayMs() {
     const st = this.store?.state;
-    if (!st || !this.ctx) return null;
     const c = this.ctx;
-    if (c.type === 'label') { const t = st.tasks[c.ref]; return t && t.groups[c.g]; }
-    if (c.type === 'review') return st.tasks[c.ref];
-    if (c.type === 'example') { st.examples[c.ds] = st.examples[c.ds] || {}; return st.examples[c.ds]; }
-    return null;
+    if (!st || !c) return 0;
+    const pend = this.pending.get(this.ctxKey()) || 0;
+    if (c.type === 'label') return (st.tasks[c.ref]?.groups[c.g]?.activeMs || 0) + pend;
+    if (c.type === 'review') return (st.tasks[c.ref]?.reviewMs || 0) + pend;
+    return (st.examples[c.ds]?.ms || 0) + pend;
   }
 
   tick() {
@@ -106,29 +129,26 @@ export class Timer {
     this.lastTick = t;
     const status = this.computeStatus();
     if (status === 'timing' && this.store) {
-      const tg = this.target();
-      if (tg) {
-        const field = this.ctx.type === 'review' ? 'reviewMs' : this.ctx.type === 'example' ? 'ms' : 'activeMs';
-        tg[field] = (tg[field] || 0) + dt;
-      }
-      if (this.session) this.session.activeMs += dt;
+      const k = this.ctxKey();
+      this.pending.set(k, (this.pending.get(k) || 0) + dt);
+      if (this.session) { this.session.activeMs += dt; this.session.last = t; }
       this.sampleActive += dt;
       this.dirty = true;
     }
-    if (this.session) this.session.last = t;
     if (t - this.lastSample >= SAMPLE_MS) this.sample(t);
     if (status !== this._status) { this._status = status; this.emit(); }
     else if (status === 'timing') this.emit();
   }
 
   sample(t) {
-    if (this.store) {
+    if (this.store && (this.ctx || this.isVisible())) {
       const c = this.ctx;
-      this.store.state.samples.push([
+      this.pendingSamples.push([
         t, c ? c.type[0].toUpperCase() : '-', c?.ref ?? c?.ds ?? null, c?.g ?? null,
         this.isVisible() ? 1 : 0, this.hasFocus() ? 1 : 0, Math.round((t - this.lastInput) / 1000),
-        this.paused ? 1 : 0, Math.round(this.sampleActive), this.sampleInputs,
+        this.paused ? 1 : 0, Math.round(this.sampleActive), this.sampleInputs, TAB_ID,
       ]);
+      if (this.session) this.session.last = t;
       this.dirty = true;
     }
     this.lastSample = t;
@@ -136,9 +156,34 @@ export class Timer {
     this.sampleInputs = 0;
   }
 
+  // store hook: add unsaved time to the freshest state
+  applyPending(st) {
+    for (const [k, ms] of this.pending) {
+      const [type, a, b] = k.split('|');
+      if (type === 'L') {
+        const t = st.tasks[a];
+        if (!t) continue;
+        if (!t.groups[b]) t.groups[b] = { status: 'open', judgments: [], activeMs: 0, opens: 0, defers: 0, instanceFields: [] };
+        t.groups[b].activeMs = (t.groups[b].activeMs || 0) + ms;
+      } else if (type === 'R') {
+        if (st.tasks[a]) st.tasks[a].reviewMs = (st.tasks[a].reviewMs || 0) + ms;
+      } else {
+        st.examples[a] = st.examples[a] || {};
+        st.examples[a].ms = (st.examples[a].ms || 0) + ms;
+      }
+    }
+    this.pending.clear();
+    if (this.pendingSamples.length) { st.samples.push(...this.pendingSamples); this.pendingSamples = []; }
+    if (this.session) {
+      const i = st.sessions.findIndex((s) => s.id === this.session.id);
+      if (i >= 0) st.sessions[i] = { ...this.session };
+      else st.sessions.push({ ...this.session });
+    }
+  }
+
   updateStatus() { this._status = this.computeStatus(); this.emit(); }
 
   flush() {
-    if (this.dirty && this.store) { this.dirty = false; this.store.save(); }
+    if (this.dirty && this.store && !this.store.wiped) { this.dirty = false; this.store.save(); }
   }
 }

@@ -1,5 +1,6 @@
 // Lazy data loading with caching. Everything comes from data/ produced by the build script.
 import { upperBound } from './util.js';
+import { decryptGroupAnswer } from './crypto.js';
 
 const BASE = new URL('../data/', import.meta.url).href;
 const cache = new Map();          // path -> promise (promise.value set once resolved)
@@ -32,7 +33,28 @@ export function getJSON(path) {
 export const loadManifest = () => getJSON('manifest.json');
 export const loadTask = (key) => getJSON(`tasks/${key}/task.json`);
 export const loadGroup = (key, g) => getJSON(`tasks/${key}/groups/${g}.json`);
-export const loadAnswersEnc = (key) => getJSON(`answers/${key}.json`);
+// answer of one group: lines -> [[normal, anomalous] per message]; blocks -> [0|1 per block]
+const answerCache = new Map();
+export function loadGroupAnswer(task, g) {
+  const k = `${task.key}/${g}`;
+  if (!answerCache.has(k)) {
+    const p = fetch(BASE + `answers/${task.key}/${g}.json`, { cache: 'no-cache' })
+      .then((r) => { if (!r.ok) throw new Error(`Could not load the answer (HTTP ${r.status})`); return r.json(); })
+      .then((enc) => decryptGroupAnswer(enc, task.ak));
+    p.catch(() => answerCache.delete(k));
+    answerCache.set(k, p);
+  }
+  return answerCache.get(k);
+}
+// answers object for several groups, in the shape core.js expects
+export async function loadAnswers(task, gs) {
+  const out = { kind: task.unit === 'block' ? 'blocks' : 'lines', groups: {} };
+  const list = [...gs];
+  let i = 0;
+  const worker = async () => { while (i < list.length) { const g = list[i++]; out.groups[g] = await loadGroupAnswer(task, g); } };
+  await Promise.all(Array.from({ length: Math.min(12, list.length) }, worker));
+  return out;
+}
 
 function linePath(task, i) {
   const per = task.lines_per_file || 2000;

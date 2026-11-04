@@ -26,7 +26,7 @@ export function groupRecords(store, ref, assigned, taskJson) {
       instanceFields: s?.instanceFields || [],
       judgments: s?.judgments || [],
       mergedInto: s?.mergedInto || null,
-      reviewNote: s?.reviewNote || '',
+      result: s?.result || null,
     };
   });
 }
@@ -71,7 +71,6 @@ export function buildReport({ store, manifest, entries, tasks, exampleIds, answe
       labelMs: recs.reduce((a, r) => a + r.activeMs, 0),
       reviewMs: Math.round(t?.reviewMs || 0),
       startedAt: t?.startedAt ?? null,
-      unlockedAt: t?.unlocked?.at ?? null,
       judgmentCounts: judgments, coverage,
       groups: recs,
       metrics: null,
@@ -85,13 +84,14 @@ export function buildReport({ store, manifest, entries, tasks, exampleIds, answe
 
 export function reportCsv(rep) {
   const rows = [csvRow(['name', 'task', 'part', 'group_index', 'group_id', 'queue_pos', 'status', 'effective_seconds', 'opens', 'defers',
-    'n_judgments', 'modes', 'labels', 'rules', 'members_covered', 'merged_into_group', 'submitted_at', 'unlocked_at'])];
+    'n_judgments', 'modes', 'labels', 'rules', 'members_covered', 'merged_into_group', 'submitted_at', 'answer_members', 'answer_anomalous', 'agree'])];
   for (const t of rep.tasks) {
     for (const r of t.groups) {
       rows.push(csvRow([rep.name, t.display, t.part || '', r.g, r.id, r.queuePos ?? '', r.status, (r.activeMs / 1000).toFixed(0), r.opens, r.defers,
         r.judgments.length, r.judgments.map((j) => j.mode).join('|'), r.judgments.map((j) => j.label).join('|'),
         r.judgments.map((j) => j.rules.join('+')).join('|'), r.judgments.reduce((a, j) => a + j.members, 0),
-        r.mergedInto ? r.mergedInto.g : '', r.submittedAt ? new Date(r.submittedAt).toISOString() : '', t.unlockedAt ? new Date(t.unlockedAt).toISOString() : '']));
+        r.mergedInto ? r.mergedInto.g : '', r.submittedAt ? new Date(r.submittedAt).toISOString() : '',
+        r.result ? r.result.members : '', r.result ? r.result.anomalies : '', r.result ? r.result.agree : '']));
     }
   }
   return rows.join('\r\n') + '\r\n';

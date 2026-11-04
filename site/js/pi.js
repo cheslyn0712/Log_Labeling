@@ -1,12 +1,11 @@
-// PI summary: load students' reports, enter passphrases, recompute every metric from the raw judgments.
+// PI summary: load students' reports and recompute every metric from the raw judgments.
 import { h, clear, fmtNum, pct, download, readFileText, csvRow, dateStamp } from './util.js';
-import { loadManifest, loadTask, loadAnswersEnc, loadExamples } from './data.js';
-import { decryptAnswers } from './crypto.js';
+import { loadManifest, loadTask, loadExamples, loadAnswers } from './data.js';
 import { computeMetrics, MODES, MODE_NAMES } from './core.js';
 import { assignedGroups } from './report.js';
 
 const main = document.getElementById('pi');
-const state = { manifest: null, exampleIds: null, reports: [], pass: {}, answers: {}, tasks: {}, rows: [] };
+const state = { manifest: null, exampleIds: null, reports: [], tasks: {}, rows: [] };
 
 async function init() {
   state.manifest = await loadManifest();
@@ -18,10 +17,10 @@ async function init() {
 function render() {
   clear(main);
   main.appendChild(h('h1', null, 'Labeling summary'));
-  main.appendChild(h('p', { class: 'muted small' }, `Data version ${state.manifest.version}. Everything is recomputed here from the judgments in the reports; the accuracy figures inside the reports are ignored. Nothing leaves this browser.`));
+  main.appendChild(h('p', { class: 'muted small' }, `Data version ${state.manifest.version}. Every number is recomputed here from the judgments in the reports and the answer files; figures stored inside the reports are ignored. Nothing leaves this browser.`));
 
-  // reports
   const fileInp = h('input', { type: 'file', multiple: true, accept: '.json,application/json', class: 'inp' });
+  const msg = h('div', { class: 'small' });
   fileInp.addEventListener('change', async () => {
     for (const f of fileInp.files) {
       try {
@@ -31,54 +30,20 @@ function render() {
         state.reports.push(obj);
       } catch { alert(`${f.name}: not valid JSON.`); }
     }
+    msg.textContent = 'Computing…';
+    try { await compute(); } catch (e) { msg.textContent = String(e.message || e); msg.className = 'form-err'; return; }
     render();
   });
-  main.appendChild(h('section', { class: 'card' }, h('h3', null, '1. Students’ reports (JSON)'), fileInp,
+  main.appendChild(h('section', { class: 'card' }, h('h3', null, 'Students’ reports (JSON)'),
+    h('p', { class: 'small muted' }, 'Select one or more report files; the summary updates immediately.'), fileInp, msg,
     state.reports.length ? h('ul', { class: 'tight small' }, state.reports.map((r) => h('li', null, `${r.name} — generated ${r.generatedAt}, data version ${r.dataVersion}`,
       r.dataVersion !== state.manifest.version ? h('span', { class: 'err-text' }, ' (different data version!)') : null,
-      ' ', h('button', { class: 'btn tiny ghost', onclick: () => { state.reports = state.reports.filter((x) => x !== r); render(); } }, 'remove')))) : h('p', { class: 'muted small' }, 'No reports loaded yet.')));
-
-  // passphrases
-  const needed = new Map();
-  for (const r of state.reports) for (const t of r.tasks) needed.set(t.key, state.manifest.tasks.find((x) => x.key === t.key)?.display || t.display);
-  const passBox = h('div', { class: 'pass-grid' });
-  for (const [key, disp] of needed) {
-    const inp = h('input', { class: 'inp', type: 'text', value: state.pass[key] || '', placeholder: 'passphrase', autocomplete: 'off' });
-    inp.addEventListener('change', () => { state.pass[key] = inp.value.trim(); delete state.answers[key]; });
-    passBox.appendChild(h('label', { class: 'row gap' }, h('span', { style: { width: '220px' } }, disp), inp, state.answers[key] ? h('span', { class: 'ok-text small' }, '✓ unlocked') : null));
-  }
-  const paste = h('textarea', { class: 'note', rows: '3', placeholder: 'Or paste the content of pi_private/passphrases.json here' });
-  paste.addEventListener('change', () => {
-    try {
-      const obj = JSON.parse(paste.value);
-      for (const v of Object.values(obj)) if (v && v.key && v.passphrase) { state.pass[v.key] = v.passphrase; delete state.answers[v.key]; }
-      render();
-    } catch { alert('Could not read that as passphrases.json.'); }
-  });
-  main.appendChild(h('section', { class: 'card' }, h('h3', null, '2. Passphrases'),
-    needed.size ? passBox : h('p', { class: 'muted small' }, 'Load reports first.'), paste));
-
-  const msg = h('div', { class: 'small' });
-  main.appendChild(h('section', { class: 'card' }, h('h3', null, '3. Compute'),
-    h('div', { class: 'row gap' }, h('button', { class: 'btn primary', disabled: !state.reports.length, onclick: async () => { msg.textContent = 'Computing…'; try { await compute(); msg.textContent = ''; render(); } catch (e) { msg.textContent = String(e.message || e); msg.className = 'form-err'; } } }, 'Compute summary'),
-      state.rows.length ? h('button', { class: 'btn', onclick: exportCsv }, 'Export CSV') : null), msg));
+      ' ', h('button', { class: 'btn tiny ghost', onclick: async () => { state.reports = state.reports.filter((x) => x !== r); await compute(); render(); } }, 'remove')))) : null));
 
   if (state.rows.length) main.appendChild(summaryTable());
 }
 
 async function taskJson(key) { if (!state.tasks[key]) state.tasks[key] = await loadTask(key); return state.tasks[key]; }
-
-async function answers(key) {
-  if (state.answers[key]) return state.answers[key];
-  const p = state.pass[key];
-  if (!p) return null;
-  try {
-    const a = await decryptAnswers(await loadAnswersEnc(key), p);
-    if (a.task !== key) throw new Error('mismatch');
-    state.answers[key] = a;
-    return a;
-  } catch { throw new Error(`Wrong passphrase for ${state.manifest.tasks.find((x) => x.key === key)?.display}.`); }
-}
 
 async function compute() {
   const rows = [];
@@ -94,13 +59,11 @@ async function compute() {
       const aset = new Set(assigned);
       const recs = t.groups.filter((x) => aset.has(x.g) && !state.exampleIds.has(tj.groups[x.g].id));
       if (recs.length !== assigned.length) notes.push(`report lists ${recs.length} of ${assigned.length} assigned groups`);
-      for (const x of recs) if (x.status === 'submitted' && !t.unlockedAt) { /* fine */ }
-      const ans = await answers(t.key);
-      const m = computeMetrics(recs.map((x) => ({ ...x, groupsAssigned: undefined })), ans);
-      // effective time: recomputed from the per-group records (never from the report's totals)
+      const ans = await loadAnswers(tj, recs.filter((x) => x.status === 'submitted').map((x) => x.g));
+      const m = computeMetrics(recs, ans);
       const labelMs = recs.reduce((a, x) => a + (x.activeMs || 0), 0);
       if (m.errors.length) notes.push(...m.errors.slice(0, 3));
-      rows.push({ name: r.name, display: t.display, unlocked: !!t.unlockedAt, hasAnswers: !!ans, labelMs, reviewMs: t.reviewMs || 0, m, notes });
+      rows.push({ name: r.name, display: t.display, labelMs, reviewMs: t.reviewMs || 0, m, notes });
     }
   }
   state.rows = rows;
@@ -111,25 +74,25 @@ const COLS = [
   ['Task', (r) => r.display],
   ['Groups submitted', (r) => `${r.m.groupsSubmitted} / ${r.m.groupsAssigned}`],
   ['Effective hours', (r) => (r.labelMs / 3600000).toFixed(2)],
-  ['Review hours', (r) => (r.reviewMs / 3600000).toFixed(2)],
+  ['Answer-review hours', (r) => (r.reviewMs / 3600000).toFixed(2)],
   ...MODES.map((k) => [`Judgments: ${MODE_NAMES[k]}`, (r) => r.m.judgments[k] || 0]),
-  ...MODES.map((k) => [`Coverage: ${MODE_NAMES[k]}`, (r) => (r.hasAnswers ? r.m.coverage[k] || 0 : '')]),
-  ['Accuracy (member)', (r) => (r.hasAnswers ? pct(r.m.memberAccuracy) : '')],
-  ['Accuracy (group)', (r) => (r.hasAnswers ? pct(r.m.groupAccuracy) : '')],
-  ['Anomaly precision', (r) => (r.hasAnswers ? pct(r.m.precision) : '')],
-  ['Anomaly recall', (r) => (r.hasAnswers ? pct(r.m.recall) : '')],
-  ['Anomaly F1', (r) => (r.hasAnswers ? pct(r.m.f1) : '')],
-  ["Can't-tell rate", (r) => (r.hasAnswers ? pct(r.m.unknownRate) : '')],
-  ['Conservative accuracy', (r) => (r.hasAnswers ? pct(r.m.conservativeAccuracy) : '')],
-  ['Members judged', (r) => (r.hasAnswers ? r.m.members : '')],
-  ['Answer anomalies', (r) => (r.hasAnswers ? r.m.answerAnomalies : '')],
-  ['Student unlocked', (r) => (r.unlocked ? 'yes' : 'no')],
+  ...MODES.map((k) => [`Coverage: ${MODE_NAMES[k]}`, (r) => r.m.coverage[k] || 0]),
+  ['Accuracy (member)', (r) => pct(r.m.memberAccuracy)],
+  ['Accuracy (group)', (r) => pct(r.m.groupAccuracy)],
+  ['Anomaly precision', (r) => pct(r.m.precision)],
+  ['Anomaly recall', (r) => pct(r.m.recall)],
+  ['Anomaly F1', (r) => pct(r.m.f1)],
+  ["Can't-tell rate", (r) => pct(r.m.unknownRate)],
+  ['Conservative accuracy', (r) => pct(r.m.conservativeAccuracy)],
+  ['Members judged', (r) => r.m.members],
+  ['Answer anomalies', (r) => r.m.answerAnomalies],
   ['Notes', (r) => r.notes.join('; ')],
 ];
 
 function summaryTable() {
   const wrap = h('section', { class: 'sec', style: { overflowX: 'auto' } }, h('h2', null, 'Summary (student × task)'),
-    h('p', { class: 'small muted' }, 'Each task excludes its one worked-example group. Metrics use submitted (locked) groups only. Coverage counts lines for BGL / Thunderbird and blocks for HDFS.'));
+    h('p', { class: 'small muted' }, 'Each task excludes its one worked-example group. Metrics use submitted (locked) groups only. Coverage counts lines for BGL / Thunderbird and blocks for HDFS.'),
+    h('button', { class: 'btn', onclick: exportCsv }, 'Export CSV'));
   const tbl = h('table', { class: 'tbl' }, h('thead', null, h('tr', null, COLS.map(([c]) => h('th', null, c)))),
     h('tbody', null, state.rows.map((r) => h('tr', null, COLS.map(([, f]) => { const v = f(r); return h('td', { class: typeof v === 'number' ? 'num' : '' }, typeof v === 'number' ? fmtNum(v) : v); })))));
   wrap.appendChild(tbl);
