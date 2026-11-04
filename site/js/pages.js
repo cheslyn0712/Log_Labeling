@@ -50,8 +50,8 @@ export function nextGroup(t, after) {
   return null;
 }
 
-function blocked() {
-  if (App.store.versionMismatch) return 'Your saved progress belongs to another data version. Contact the PI before labeling.';
+function blocked(ref) {
+  if (App.store.incompatible.has(ref)) return 'The data of this task changed after you started it, so your earlier progress in it cannot be used here. Please contact the PI.';
   return null;
 }
 
@@ -143,7 +143,7 @@ function timerClock({ ref, label }) {
 // ------------------------------------------------------------------ task page
 export async function renderTask(main, ref) {
   const { e, tj, assigned } = await ctxFor(ref);
-  const blk = blocked();
+  const blk = blocked(ref);
   if (!blk) { ensureTaskState(ref, assigned); await ensureResults(ref, tj); }
   const p = taskProgress(e, tj);
   const t = App.store.task(ref);
@@ -204,7 +204,7 @@ export async function renderGroup(main, ref, g) {
     App.go(`#/example/${tj.dataset}`);
     return;
   }
-  const blk = blocked();
+  const blk = blocked(ref);
   if (blk) { main.appendChild(h('div', { class: 'notice err' }, blk)); return; }
   ensureTaskState(ref, assigned);
   const T = () => App.store.task(ref);

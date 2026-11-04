@@ -37,11 +37,13 @@ function render() {
   main.appendChild(h('section', { class: 'card' }, h('h3', null, 'Students’ reports (JSON)'),
     h('p', { class: 'small muted' }, 'Select one or more report files; the summary updates immediately.'), fileInp, msg,
     state.reports.length ? h('ul', { class: 'tight small' }, state.reports.map((r) => h('li', null, `${r.name} — generated ${r.generatedAt}, data version ${r.dataVersion}`,
-      r.dataVersion !== state.manifest.version ? h('span', { class: 'err-text' }, ' (different data version!)') : null,
+      !sameData(r) ? h('span', { class: 'err-text' }, ' (made with task data that has since changed)') : null,
       ' ', h('button', { class: 'btn tiny ghost', onclick: async () => { state.reports = state.reports.filter((x) => x !== r); await compute(); render(); } }, 'remove')))) : null));
 
   if (state.rows.length) main.appendChild(summaryTable());
 }
+
+function sameData(r) { return r.dataVersion === state.manifest.version || (state.manifest.compatible || []).includes(r.dataVersion); }
 
 async function taskJson(key) { if (!state.tasks[key]) state.tasks[key] = await loadTask(key); return state.tasks[key]; }
 
@@ -51,7 +53,7 @@ async function compute() {
     const entries = state.manifest.students[r.name] || [];
     for (const t of r.tasks) {
       const notes = [];
-      if (r.dataVersion !== state.manifest.version) notes.push('data version differs');
+      if (!sameData(r)) notes.push('task data changed since this report');
       const tj = await taskJson(t.key);
       const entry = entries.find((e) => e.key === t.key && (e.part || null) === (t.part || null));
       if (!entry) notes.push('task not assigned to this student');

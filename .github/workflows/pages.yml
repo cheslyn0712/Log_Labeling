@@ -22,6 +22,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp script and style URLs with this deploy's id (a browser never mixes files of two deploys)
+        run: |
+          V=${GITHUB_SHA::8}
+          sed -i -E "s#(from '\./[A-Za-z0-9_-]+\.js)'#\1?v=$V'#g" site/js/*.js
+          sed -i -E "s#(src=\"js/[A-Za-z0-9_-]+\.js)\"#\1?v=$V\"#g; s#(href=\"css/app\.css)\"#\1?v=$V\"#g" site/*.html
+          grep -c "?v=$V" site/index.html site/pi.html site/js/app.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

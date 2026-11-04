@@ -80,7 +80,7 @@ async function boot() {
 async function login(name, silent) {
   App.store?.close();
   App.name = name;
-  App.store = new Store(name, App.manifest.version);
+  App.store = new Store(name, App.manifest);
   App.entries = App.manifest.students[name];
   App.answers = {};
   setCurrentName(name);
@@ -130,11 +130,12 @@ function renderBanners() {
   const st = App.store;
   if (!st) return;
   if (st.saveError) banner.appendChild(h('div', { class: 'banner err' }, 'Your browser refused to save progress (storage full?). Export a backup now from “Backup & report” and contact the PI.'));
-  if (st.versionMismatch) banner.appendChild(h('div', { class: 'banner err' }, `Your saved progress was made with data version ${st.state.dataVersion}, but the site now serves ${App.manifest.version}. Labeling is blocked; contact the PI.`));
   const b = st.state.backup;
   const anyWork = Object.values(st.state.tasks).some((t) => Object.values(t.groups).some((g) => g.judgments?.length || g.status === 'submitted'));
   if (!anyWork) return;
-  const since = b.lastAt ? (Date.now() - b.lastAt) / 60000 : Infinity;
+  let firstWork = Infinity;
+  for (const t of Object.values(st.state.tasks)) for (const g of Object.values(t.groups)) if (g.submittedAt) firstWork = Math.min(firstWork, g.submittedAt);
+  const since = (Date.now() - (b.lastAt || firstWork)) / 60000;
   const changedSince = !b.lastAt || st.state.updatedAt > b.lastAt + 1000;
   if ((since > BACKUP_MINUTES && changedSince) || (b.groupsSince || 0) >= BACKUP_GROUPS) {
     banner.appendChild(h('div', { class: 'banner warn' },
@@ -323,7 +324,7 @@ function renderBackup() {
     try { obj = JSON.parse(await readFileText(f)); } catch { msg.textContent = 'This file is not valid JSON.'; msg.className = 'form-err'; return; }
     if (obj?.name === st.name && !confirm(`Replace ${st.name}’s progress in this browser with the backup from ${fmtTime(obj.exportedAt)}?`)) return;
     App.timer.setContext(null);
-    const err = st.importBackup(obj, App.manifest.version);
+    const err = st.importBackup(obj);
     if (err) { msg.textContent = err; msg.className = 'form-err'; return; }
     App.timer.attach(st);
     msg.textContent = 'Backup restored.'; msg.className = 'ok-text';
@@ -353,7 +354,7 @@ function renderBackup() {
       h('p', null, `Last backup: ${b.lastAt ? fmtTime(b.lastAt) : 'never'}. A backup holds your name, every action and judgment, all time records and the data version.`),
       h('button', { class: 'btn primary', onclick: () => { exportBackup(); renderBackupSoon(); } }, 'Export backup'),
       h('h4', null, 'Restore from a backup'),
-      h('p', { class: 'small muted' }, `Only a backup of ${st.name} made for data version ${App.manifest.version} can be restored here. It replaces ${st.name}’s progress in this browser.`),
+      h('p', { class: 'small muted' }, `Only a backup of ${st.name} can be restored here. It replaces ${st.name}’s progress in this browser.`),
       fileInp, msg),
     h('section', { class: 'card' },
       h('h3', null, 'Report for the PI'),

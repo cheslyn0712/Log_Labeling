@@ -27,10 +27,26 @@ export function setCurrentName(n) {
   if (n) localStorage.setItem(PREFIX + 'current', n); else localStorage.removeItem(PREFIX + 'current');
 }
 
-function fresh(name, dataVersion) {
+export function taskFps(manifest) { return Object.fromEntries(manifest.tasks.map((t) => [t.key, t.fp])); }
+
+function hasProgress(t) { return Object.values(t.groups || {}).some((g) => g.status !== 'open' || (g.judgments || []).length); }
+
+// task refs with progress that cannot be carried over to the data the site serves now
+export function incompatibleTasks(state, manifest) {
+  const out = new Set();
+  if (state.dataVersion === manifest.version || (manifest.compatible || []).includes(state.dataVersion)) return out;
+  const fps = taskFps(manifest);
+  for (const [ref, t] of Object.entries(state.tasks || {})) {
+    const key = ref.split('~')[0];
+    if (hasProgress(t) && (!state.taskFp || !fps[key] || state.taskFp[key] !== fps[key])) out.add(ref);
+  }
+  return out;
+}
+
+function fresh(name, dataVersion, taskFp) {
   const now = Date.now();
   return {
-    schema: SCHEMA, name, dataVersion, createdAt: now, updatedAt: now,
+    schema: SCHEMA, name, dataVersion, taskFp, createdAt: now, updatedAt: now,
     examples: {}, tasks: {}, sessions: [], samples: [], log: [],
     backup: { lastAt: null, groupsSince: 0 },
   };
@@ -39,7 +55,7 @@ function fresh(name, dataVersion) {
 export function uid(prefix) { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 export class Store {
-  constructor(name, dataVersion) {
+  constructor(name, manifest) {
     this.name = name;
     this.key = PREFIX + 'user:' + name;
     this.listeners = new Set();
@@ -48,10 +64,12 @@ export class Store {
     this.pendingLog = [];
     this.saveError = null;
     this.wiped = false;
+    this.manifest = manifest;
+    this.incompatible = new Set();   // task refs whose groups changed after the student started them
     this.raw = localStorage.getItem(this.key);
-    this.state = this.raw ? JSON.parse(this.raw) : fresh(name, dataVersion);
-    this.versionMismatch = !!this.raw && this.state.dataVersion !== dataVersion;
+    this.state = this.raw ? JSON.parse(this.raw) : fresh(name, manifest.version, taskFps(manifest));
     if (!this.raw) { this.pendingLog.push([Date.now(), 'create', {}]); this.write(); }
+    else this.adoptDataVersion();
     this._onStorage = (e) => {
       if (e.key !== this.key) return;
       if (e.newValue === null) { this.wiped = true; for (const f of this.externalListeners) f('wiped'); return; }
@@ -62,6 +80,24 @@ export class Store {
   }
 
   close() { window.removeEventListener('storage', this._onStorage); this.hooks.clear(); }
+
+  // Saved progress made with another data build: keep it whenever the groups it refers to are
+  // unchanged (known-compatible version, or equal per-task fingerprints). Only tasks whose groups
+  // really changed are set aside; nothing is deleted.
+  adoptDataVersion() {
+    const st = this.state;
+    const m = this.manifest;
+    const fps = taskFps(m);
+    if (st.dataVersion === m.version) {
+      if (!st.taskFp) this.act('data-fingerprints', {}, (s) => { s.taskFp = fps; });
+      return;
+    }
+    this.incompatible = incompatibleTasks(st, m);
+    if (!this.incompatible.size) {
+      const from = st.dataVersion;
+      this.act('data-version', { from, to: m.version }, (s) => { s.dataVersion = m.version; s.taskFp = fps; });
+    }
+  }
 
   // pick up what other windows saved
   reload() {
@@ -141,12 +177,16 @@ export class Store {
   }
 
   // returns error string or null
-  importBackup(obj, dataVersion) {
+  importBackup(obj) {
     if (!obj || obj.kind !== 'labeling-backup' || !obj.state) return 'This file is not a labeling backup.';
     if (obj.name !== this.name) return `This backup belongs to “${obj.name}”, not to ${this.name}. Import refused.`;
-    if (obj.dataVersion !== dataVersion || obj.state.dataVersion !== dataVersion) return `This backup was made for data version ${obj.dataVersion}; the site now serves ${dataVersion}. Import refused — contact the PI.`;
+    const bad = incompatibleTasks(obj.state, this.manifest);
+    if (bad.size) return 'This backup was made for task data that has since changed. Import refused — contact the PI.';
     this.state = obj.state;
-    this.pendingLog.push([Date.now(), 'backup-import', { exportedAt: obj.exportedAt }]);
+    this.state.dataVersion = this.manifest.version;
+    this.state.taskFp = taskFps(this.manifest);
+    this.incompatible = new Set();
+    this.pendingLog.push([Date.now(), 'backup-import', { exportedAt: obj.exportedAt, fromVersion: obj.dataVersion }]);
     this.wiped = false;
     this.write();
     return null;
