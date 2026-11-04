@@ -1,11 +1,11 @@
 // Student site: boot, name gate, routing, dashboard, guide, rules, backup, report.
 import { h, clear, fmtDur, fmtTime, fmtNum, download, readFileText, dateStamp, pct } from './util.js';
-import { loadManifest, loadTask, loadRules, loadExamples, loadGuide, loadAnswers } from './data.js';
+import { loadManifest, loadTask, loadRules, loadExamples, loadGuide } from './data.js';
 import { Store, storageAvailable, canonicalName, getCurrentName, setCurrentName } from './store.js';
 import { Timer } from './timer.js';
 import { renderMarkdown } from './md.js';
-import { buildReport, reportCsv, taskRef, assignedGroups } from './report.js';
-import { renderTask, renderGroup, renderExample, watchExternal, ensureResults, agreementSoFar } from './pages.js';
+import { taskRef, assignedGroups, taskSummary, summaryText, summaryCsv, hours, pct as pctR } from './report.js';
+import { renderTask, renderGroup, renderExample, watchExternal, ensureResults } from './pages.js';
 
 // Reference effective times (instructions §9)
 export const REF_TIMES = {
@@ -35,14 +35,6 @@ export function refTime(display) {
 }
 export function entryByRef(ref) { return App.entries.find((e) => taskRef(e) === ref); }
 export async function taskJson(key) { if (!App.tasks[key]) App.tasks[key] = await loadTask(key); return App.tasks[key]; }
-
-// answers of the submitted groups of one assignment (fetched only for submitted groups)
-export async function submittedAnswers(e) {
-  const tj = await taskJson(e.key);
-  const t = App.store.task(taskRef(e));
-  const gs = Object.entries(t?.groups || {}).filter(([, s]) => s.status === 'submitted').map(([g]) => +g);
-  return loadAnswers(tj, gs);
-}
 
 const root = document.getElementById('app');
 const topbar = h('header', { class: 'topbar' });
@@ -117,7 +109,7 @@ function renderTopbar() {
     nav.appendChild(h('a', { href: '#/' }, 'Home'));
     nav.appendChild(h('a', { href: '#/guide' }, 'Guide'));
     nav.appendChild(h('a', { href: '#/rules' }, 'Rules'));
-    nav.appendChild(h('a', { href: '#/backup' }, 'Backup & report'));
+    nav.appendChild(h('a', { href: '#/backup' }, 'Results & backup'));
   }
   topbar.appendChild(nav);
   topbar.appendChild(h('span', { class: 'grow' }));
@@ -129,7 +121,7 @@ function renderBanners() {
   clear(banner);
   const st = App.store;
   if (!st) return;
-  if (st.saveError) banner.appendChild(h('div', { class: 'banner err' }, 'Your browser refused to save progress (storage full?). Export a backup now from “Backup & report” and contact the PI.'));
+  if (st.saveError) banner.appendChild(h('div', { class: 'banner err' }, 'Your browser refused to save progress (storage full?). Export a backup now from “Results & backup” and contact the PI.'));
   const b = st.state.backup;
   const anyWork = Object.values(st.state.tasks).some((t) => Object.values(t.groups).some((g) => g.judgments?.length || g.status === 'submitted'));
   if (!anyWork) return;
@@ -173,7 +165,7 @@ async function route() {
     if (!a) await renderHome();
     else if (a === 'guide') await renderGuide();
     else if (a === 'rules') renderRules();
-    else if (a === 'backup') renderBackup();
+    else if (a === 'backup') await renderBackup();
     else if (a === 'example') await renderExample(main, b);
     else if (a === 'task' && b && !c) await renderTask(main, b);
     else if (a === 'task' && c === 'g') await renderGroup(main, b, +d);
@@ -249,14 +241,14 @@ async function renderHome() {
     const rt = refTime(e.display);
     const exSeen = st.state.examples[tj.dataset]?.seenAt;
     const label = p.done ? (p.remaining ? 'Continue →' : 'Open') : 'Start →';
-    const agr = agreementSoFar(p.t);
+    const sum = taskSummary(p.t, p.assigned);
     tasksBox.appendChild(h('div', { class: 'task-card' },
       h('div', { class: 'task-num' }, String(k + 1)),
       h('div', { class: 'task-main' },
         h('div', { class: 'task-title' }, h('a', { href: `#/task/${p.ref}` }, e.display)),
         h('div', { class: 'small muted' }, `${fmtNum(p.assigned.length)} groups · ${fmtNum(p.members)} ${tj.unit === 'block' ? 'blocks' : 'lines'}` + (rt ? ` · reference time ${rt[0]} (${rt[1]})` : '')),
         h('div', { class: 'bar' }, h('div', { class: 'bar-fill', style: { width: (100 * p.done / Math.max(1, p.assigned.length)) + '%' } })),
-        h('div', { class: 'small' }, `${fmtNum(p.done)} / ${fmtNum(p.assigned.length)} groups done · labeling time ${fmtDur(p.ms)}` + (agr.rate != null ? ` · agreement ${pct(agr.rate)}` : ''),
+        h('div', { class: 'small' }, `${fmtNum(p.done)} / ${fmtNum(p.assigned.length)} groups done · labeling time ${fmtDur(p.ms)}` + (sum.accuracy != null ? ` · accuracy ${pctR(sum.accuracy)} · can't tell ${pctR(sum.cantTell)}` : ''),
           p.remaining && p.est != null ? h('span', { class: 'muted' }, ` · at your current pace, about ${fmtDur(p.est)} still needed`) : null),
         h('a', { class: 'task-example' + (exSeen ? ' seen' : ''), href: `#/example/${tj.dataset}` },
           exSeen ? `✓ ${DATASET_NAMES[tj.dataset]} worked example read` : `Worked example: read the ${DATASET_NAMES[tj.dataset]} example before your first group →`)),
@@ -279,7 +271,7 @@ async function renderHome() {
         h('li', null, 'Each task starts with its dataset’s worked example (a few minutes, not counted as labeling time).'),
         h('li', null, 'Label at most 2–3 effective hours a day and no more than 90 minutes in one sitting.'),
         h('li', null, 'After 20–30 groups, check the “at your current pace” estimate again.'),
-        h('li', null, 'Export a backup now and then from ', h('a', { href: '#/backup' }, 'Backup & report'), '.')))));
+        h('li', null, 'When you finish, send your results from ', h('a', { href: '#/backup' }, 'Results & backup'), '; export a backup there now and then.')))));
   watchHome();
 
   main.appendChild(h('section', { class: 'sec' }, h('h2', null, 'How time is counted'),
@@ -312,8 +304,9 @@ function renderRules() {
   main.appendChild(box);
 }
 
-function renderBackup() {
+async function renderBackup() {
   const st = App.store;
+  await Promise.all(App.entries.map(async (e) => ensureResults(taskRef(e), await taskJson(e.key))));
   const b = st.state.backup;
   const fileInp = h('input', { type: 'file', accept: '.json,application/json', class: 'inp' });
   const msg = h('div', { class: 'small' });
@@ -331,24 +324,33 @@ function renderBackup() {
     renderBanners();
   });
 
-  const repMsg = h('div', { class: 'small' });
-  const report = async (kind) => {
-    repMsg.textContent = 'Preparing…';
-    App.timer.tick(); App.timer.flush();
-    const tasks = {};
-    for (const e of App.entries) tasks[e.key] = await taskJson(e.key);
-    const answersByRef = {};
-    for (const e of App.entries) answersByRef[taskRef(e)] = await submittedAnswers(e);
-    const rep = buildReport({ store: st, manifest: App.manifest, entries: App.entries, tasks, exampleIds: App.exampleIds, answersByRef });
-    st.act('report', { kind });
-    if (kind === 'json') download(`labeling-report-${st.name}-${dateStamp()}.json`, JSON.stringify(rep));
-    else download(`labeling-report-${st.name}-${dateStamp()}.csv`, reportCsv(rep), 'text/csv');
-    repMsg.textContent = 'Downloaded.';
-  };
+  // results: the three numbers students send to the PI
+  const rows = App.entries.map((e) => {
+    const tj = App.tasks[e.key];
+    return { display: e.display, unit: tj.unit === 'block' ? 'blocks' : 'lines', s: taskSummary(st.task(taskRef(e)), assignedGroups(e, tj, App.exampleIds)) };
+  });
+  const copyMsg = h('span', { class: 'small ok-text' });
+  const results = h('section', { class: 'card' },
+    h('h3', null, 'Your results'),
+    h('table', { class: 'tbl results' },
+      h('thead', null, h('tr', null, ['Task', 'Groups done', 'Labeling time', 'Accuracy', "Can't tell"].map((x) => h('th', null, x)))),
+      h('tbody', null, rows.map(({ display, s }) => h('tr', null,
+        h('td', null, display), h('td', { class: 'num' }, `${fmtNum(s.done)} / ${fmtNum(s.groups)}`), h('td', { class: 'num' }, hours(s.ms)),
+        h('td', { class: 'num' }, pctR(s.accuracy)), h('td', { class: 'num' }, pctR(s.cantTell)))))),
+    h('p', { class: 'small muted' }, 'Labeling time is effective time only (answer review and examples are not included). Accuracy counts the lines (HDFS: blocks) you labeled Normal or Anomalous; “Can’t tell” is the share you labeled Can’t tell.'),
+    h('div', { class: 'row gap' },
+      h('button', { class: 'btn primary', onclick: async () => {
+        const txt = summaryText(st.name, rows);
+        try { await navigator.clipboard.writeText(txt); copyMsg.textContent = 'Copied — paste it into your message to the PI.'; } catch { prompt('Copy this text:', txt); }
+        st.act('results-copied', {});
+      } }, 'Copy results as text'),
+      h('button', { class: 'btn', onclick: () => { download(`labeling-results-${st.name}-${dateStamp()}.csv`, summaryCsv(st.name, rows), 'text/csv'); st.act('results-csv', {}); } }, 'Download CSV'),
+      copyMsg));
 
   const wipeInp = h('input', { class: 'inp', placeholder: `Type ${st.name} to confirm` });
   main.appendChild(h('div', { class: 'prose wide' },
-    h('h1', null, 'Backup & report'),
+    h('h1', null, 'Results & backup'),
+    results,
     h('section', { class: 'card' },
       h('h3', null, 'Backup'),
       h('p', null, `Last backup: ${b.lastAt ? fmtTime(b.lastAt) : 'never'}. A backup holds your name, every action and judgment, all time records and the data version.`),
@@ -356,11 +358,6 @@ function renderBackup() {
       h('h4', null, 'Restore from a backup'),
       h('p', { class: 'small muted' }, `Only a backup of ${st.name} can be restored here. It replaces ${st.name}’s progress in this browser.`),
       fileInp, msg),
-    h('section', { class: 'card' },
-      h('h3', null, 'Report for the PI'),
-      h('p', null, 'The report contains your judgments, per-group effective time and view counts, the raw time samples and your agreement with the answers. Send both files to the PI when you are done.'),
-      h('div', { class: 'row gap' }, h('button', { class: 'btn primary', onclick: () => report('json') }, 'Download report (JSON)'), h('button', { class: 'btn', onclick: () => report('csv') }, 'Download report (CSV)')),
-      repMsg),
     h('section', { class: 'card danger' },
       h('h3', null, 'Clear this browser'),
       h('p', { class: 'small' }, `Deletes ${st.name}’s progress from this browser only (for example after moving to another computer). Export a backup first — this cannot be undone.`),

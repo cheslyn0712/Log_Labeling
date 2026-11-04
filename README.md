@@ -6,10 +6,9 @@ There is no server and no database. Everything under `site/` is served as-is by 
 
 ## Pages
 
-| URL | Who | What |
-|---|---|---|
-| `index.html` | students | name entry, tasks, worked examples, labeling (answer shown after each submitted group), backup, report |
-| `pi.html` | PI | load the students' report files, recompute every metric, export CSV |
+`index.html` is the only page: name entry, tasks, worked examples, labeling (each group's answer is shown after it is submitted), and **Results & backup**.
+
+On **Results & backup** each student sees, per task, the three numbers they report — effective labeling time, accuracy, and the share labeled “Can't tell” — and can copy them as text or download them as CSV. Accuracy counts the lines (HDFS: blocks) labeled Normal or Anomalous in submitted groups; time spent reviewing answers or examples is not labeling time. A backup file keeps every raw judgment and time record.
 
 ## Run locally
 
@@ -29,7 +28,7 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
 
 ```
 site/
-  index.html, pi.html, css/, js/     the application (plain JavaScript modules, no build step)
+  index.html, css/, js/              the application (plain JavaScript modules, no build step)
   examples.json                      the three worked-example groups (excluded from all queues and metrics)
   rules.json                         rule list shown in the judgment form (replace with the final list)
   guide.md                           labeling guide shown on the Guide page (replace with the final guide)

@@ -382,3 +382,5 @@ a.qrow:hover { background: var(--accent-2); text-decoration: none; }
 .verdict.bad { background: var(--anomaly-bg); color: var(--anomaly); }
 .verdict-big { font-size: 20px; font-weight: 750; margin-bottom: 2px; }
 .verdict .small { color: var(--text); }
+.verdict.unsure { background: var(--unknown-bg); color: var(--unknown); }
+.tbl.results td, .tbl.results th { padding: 7px 10px; }

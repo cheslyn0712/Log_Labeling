@@ -6,7 +6,7 @@ import { mountLineGroup } from './group-lines.js';
 import { mountHdfsGroup } from './group-hdfs.js';
 import { judgmentAgreement, itemCounts, resolveGroup, LABEL_NAMES, MODE_NAMES } from './core.js';
 import { App, entryByRef, taskJson, refTime, taskProgress, DATASET_NAMES, exportBackup } from './app.js';
-import { taskRef, assignedGroups } from './report.js';
+import { taskRef, assignedGroups, taskSummary } from './report.js';
 
 function loading(main, text = 'Loading…') { const el = h('div', { class: 'loading' }, h('span', { class: 'spinner' }), text); main.appendChild(el); return el; }
 
@@ -69,24 +69,26 @@ function itemLabels(t, g, n) {
   return resolveGroup({ g, status: 'submitted', judgments: rec.judgments || [], mergedInto: rec.mergedInto }, n, lookup).labels;
 }
 
+// per-group counts behind the reported numbers (members = lines, or blocks for HDFS)
 export function groupResult(ans, labels, kind) {
-  let members = 0, agree = 0, anomalies = 0, unknown = 0;
+  const r = { v: 2, members: 0, judged: 0, correct: 0, unknown: 0, anomalies: 0 };
   labels.forEach((L, i) => {
     const [nn, na] = kind === 'blocks' ? (ans[i] ? [0, 1] : [1, 0]) : ans[i];
-    members += nn + na; anomalies += na;
+    r.members += nn + na; r.anomalies += na;
     if (!L) return;
-    if (L.label === 'normal') agree += nn;
-    else if (L.label === 'anomaly') agree += na;
-    else unknown += nn + na;
+    if (L.label === 'normal') { r.judged += nn + na; r.correct += nn; }
+    else if (L.label === 'anomaly') { r.judged += nn + na; r.correct += na; }
+    else r.unknown += nn + na;
   });
-  return { members, agree, anomalies, unknown };
+  return r;
 }
+const resultOk = (r) => r && r.v === 2;
 
 // make sure every submitted group has a stored result (answers are fetched only for submitted groups)
 export async function ensureResults(ref, tj) {
   const t = App.store.task(ref);
   if (!t) return;
-  const missing = Object.entries(t.groups).filter(([, s]) => s.status === 'submitted' && !s.result).map(([g]) => +g);
+  const missing = Object.entries(t.groups).filter(([, s]) => s.status === 'submitted' && !resultOk(s.result)).map(([g]) => +g);
   if (!missing.length) return;
   const ans = await loadAnswers(tj, missing);
   const kind = ans.kind;
@@ -99,11 +101,6 @@ export async function ensureResults(ref, tj) {
   });
 }
 
-export function agreementSoFar(t) {
-  let members = 0, agree = 0, groups = 0;
-  for (const s of Object.values(t?.groups || {})) if (s.status === 'submitted' && s.result) { members += s.result.members; agree += s.result.agree; groups++; }
-  return { members, agree, groups, rate: members ? agree / members : null };
-}
 
 // ------------------------------------------------------------------ timer clock
 function clockText(ms) {
@@ -152,7 +149,7 @@ export async function renderTask(main, ref) {
   const unitName = tj.unit === 'block' ? 'blocks' : 'lines';
   const ng = t ? nextGroup(t, null) : null;
   const ex = App.examples.examples.find((x) => x.dataset === tj.dataset);
-  const agr = agreementSoFar(t);
+  const sum = taskSummary(t, assigned);
 
   main.appendChild(h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'Home'), ' / ', e.display));
   let primary;
@@ -165,7 +162,8 @@ export async function renderTask(main, ref) {
       h('div', { class: 'task-stats' },
         h('span', null, h('strong', null, `${fmtNum(p.done)} / ${fmtNum(assigned.length)}`), ' groups done'),
         h('span', null, h('strong', null, fmtDur(p.ms)), ' labeling time'),
-        h('span', null, h('strong', null, agr.rate == null ? '—' : pct(agr.rate)), ` agreement with the answers${agr.members ? ` (${fmtNum(agr.agree)} / ${fmtNum(agr.members)} ${unitName})` : ''}`),
+        h('span', null, h('strong', null, pct(sum.accuracy)), ' accuracy'),
+        h('span', null, h('strong', null, pct(sum.cantTell)), " can't tell"),
         p.remaining && p.est != null ? h('span', null, h('strong', null, `≈ ${fmtDur(p.est)}`), ' left at your pace') : null),
       h('div', { class: 'bar' }, h('div', { class: 'bar-fill', style: { width: (100 * p.done / Math.max(1, assigned.length)) + '%' } })),
       h('div', { class: 'small muted' }, `${fmtNum(p.members)} ${unitName} in ${fmtNum(assigned.length)} groups.` + (rt ? ` Reference effective time ${rt[0]} (range ${rt[1]}).` : ''))),
@@ -185,7 +183,7 @@ export async function renderTask(main, ref) {
   order.forEach((g, k) => {
     const s = statusOf(t, g);
     const r = t?.groups[g]?.result;
-    const res = s === 'done' && r ? (r.agree === r.members ? h('span', { class: 'qres ok' }, '✓') : h('span', { class: 'qres bad' }, `✗ ${pct(r.agree / Math.max(1, r.members))}`)) : null;
+    const res = s === 'done' && resultOk(r) ? (r.correct === r.members ? h('span', { class: 'qres ok' }, '✓') : h('span', { class: 'qres bad' }, r.judged ? `✗ ${pct(r.correct / r.judged)}` : "? can't tell")) : null;
     q.appendChild(h('a', { class: 'qrow st-' + s + (g === ng ? ' next' : ''), href: `#/task/${ref}/g/${g}` },
       h('span', { class: 'qpos num' }, String(k + 1)),
       h('span', { class: 'qstat' }, g === ng ? 'Next' : STATUS_TEXT[s], res ? ' ' : null, res),
@@ -249,7 +247,7 @@ export async function renderGroup(main, ref, g) {
     const n = ans.length;
     const labels = itemLabels(T(), g, n);
     const res = groupResult(ans, labels, kind);
-    if (!gs.result || gs.result.agree !== res.agree || gs.result.members !== res.members) st.act('result', { ref, g }, () => { G().result = res; });
+    if (JSON.stringify(gs.result) !== JSON.stringify(res)) st.act('result', { ref, g }, () => { G().result = res; });
     const labList = [];
     const cov = new Int32Array(n);
     labels.forEach((L, i) => { if (L) { let k = labList.indexOf(L.label); if (k < 0) { labList.push(L.label); k = labList.length - 1; } cov[i] = k + 1; } });
@@ -317,11 +315,12 @@ export async function renderGroup(main, ref, g) {
 
 function answerPane({ tj, g, ans, kind, labels, res, n, nextHref, ng, rec, T, filter }) {
   const unit = kind === 'blocks' ? 'blocks' : 'lines';
-  const all = res.agree === res.members;
+  const wrong = res.judged - res.correct;
+  const all = wrong === 0 && res.unknown === 0;
   const pane = h('div', { class: 'judge answer' });
-  pane.appendChild(h('div', { class: 'verdict ' + (all ? 'good' : 'bad') },
-    h('div', { class: 'verdict-big' }, all ? '✓ Correct' : `✗ ${fmtNum(res.members - res.agree)} of ${fmtNum(res.members)} ${unit} differ`),
-    h('div', { class: 'small' }, `Agreement ${pct(res.agree / Math.max(1, res.members))} · true label: ${fmtNum(res.members - res.anomalies)} normal, ${fmtNum(res.anomalies)} anomalous ${unit}`)));
+  pane.appendChild(h('div', { class: 'verdict ' + (all ? 'good' : wrong ? 'bad' : 'unsure') },
+    h('div', { class: 'verdict-big' }, all ? '✓ Correct' : [wrong ? `✗ ${fmtNum(wrong)} of ${fmtNum(res.members)} ${unit} wrong` : null, res.unknown ? `${fmtNum(res.unknown)} can't tell` : null].filter(Boolean).join(' · ')),
+    h('div', { class: 'small' }, `${res.judged ? `Accuracy ${pct(res.correct / res.judged)} · ` : ''}true label: ${fmtNum(res.members - res.anomalies)} normal, ${fmtNum(res.anomalies)} anomalous ${unit}`)));
   const t = T();
   const judgs = rec.mergedInto
     ? [{ ...((t.groups[rec.mergedInto.g]?.judgments || []).find((j) => j.id === rec.mergedInto.jid) || {}), merged: true }]
