@@ -46,7 +46,7 @@ export function loadGroupAnswer(task, g) {
   }
   return answerCache.get(k);
 }
-// answers object for several groups, in the shape core.js expects
+// answers object for several groups: { kind, groups: { g: answer array } }
 export async function loadAnswers(task, gs) {
   const out = { kind: task.unit === 'block' ? 'blocks' : 'lines', groups: {} };
   const list = [...gs];
@@ -97,3 +97,4 @@ function staticFile(name, kind) {
 export const loadRules = () => staticFile('rules.json');
 export const loadExamples = () => staticFile('examples.json');
 export const loadGuide = () => staticFile('guide.md', 'text');
+export const loadConfig = () => staticFile('config.json');

@@ -2,10 +2,12 @@
 import { esc } from './util.js';
 
 function inline(s) {
-  let out = esc(s);
-  out = out.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`);
+  // code spans first, kept out of emphasis parsing (they may contain * as in <*>)
+  const codes = [];
+  let out = esc(s).replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>');
+  out = out.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codes[+i]}</code>`);
   out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, t, u) => {
     const safe = /^(https?:|#|\.?\/|[\w-]+\.(md|html))/.test(u) ? u : '#';
     return `<a href="${safe}"${/^https?:/.test(u) ? ' target="_blank" rel="noopener"' : ''}>${t}</a>`;

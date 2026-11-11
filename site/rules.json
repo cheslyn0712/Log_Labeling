@@ -1,43 +1,285 @@
 {
-  "version": "draft-1",
-  "note": "Initial rule list. The PI will replace this file with the final version; the site reads only the fields below. label: the label the rule supports (normal / anomaly / unknown). note_required: a note must be written when this rule is chosen.",
+  "version": "2.1",
+  "note": "Rule list of the Labeling Rules (site/guide.md). Picking a rule is optional. The tool reads id, dataset, label, title and text; source is documentation only.",
   "rules": [
-    { "id": "B-P01", "dataset": "bgl", "label": "anomaly", "title": "TLB error interrupt", "text": "KERNEL FATAL “… TLB error interrupt” (published category KERNDTLB).", "note_required": false },
-    { "id": "B-P02", "dataset": "bgl", "label": "anomaly", "title": "Data storage interrupt", "text": "KERNEL FATAL “data storage interrupt” (KERNSTOR).", "note_required": false },
-    { "id": "B-P03", "dataset": "bgl", "label": "anomaly", "title": "ciod: error reading message prefix after LOAD_MESSAGE", "text": "APP FATAL “ciod: Error reading message prefix after LOAD_MESSAGE on CioStream socket to …” (APPSEV).", "note_required": false },
-    { "id": "B-P04", "dataset": "bgl", "label": "anomaly", "title": "Lustre mount FAILED", "text": "KERNEL FATAL “Lustre mount FAILED : … ” (KERNMNTF).", "note_required": false },
-    { "id": "B-P05", "dataset": "bgl", "label": "anomaly", "title": "rts: kernel terminated", "text": "KERNEL FATAL “rts: kernel terminated for reason …” (KERNTERM).", "note_required": false },
-    { "id": "B-P06", "dataset": "bgl", "label": "anomaly", "title": "Error receiving packet on tree network", "text": "KERNEL FATAL “Error receiving packet on tree network, expecting type … instead of type …” (KERNREC).", "note_required": false },
-    { "id": "B-P07", "dataset": "bgl", "label": "anomaly", "title": "ciod: failed to read message prefix on control stream", "text": "APP FATAL “ciod: failed to read message prefix on control stream …” (APPREAD).", "note_required": false },
-    { "id": "B-P08", "dataset": "bgl", "label": "anomaly", "title": "rts panic", "text": "KERNEL FATAL “rts panic! - stopping execution” (KERNRTSP).", "note_required": false },
-    { "id": "B-P09", "dataset": "bgl", "label": "anomaly", "title": "ciod: error reading message prefix (other message types)", "text": "APP FATAL “ciod: Error reading message prefix after <message type> on CioStream socket …” for message types other than LOAD_MESSAGE (APPSEV).", "note_required": false },
-    { "id": "B-P10", "dataset": "bgl", "label": "anomaly", "title": "ciod: node map — No child processes", "text": "APP FATAL “ciod: Error creating node map from file … No child processes” (APPCHILD). Only the reason “No child processes” is an alert; other reasons (Permission denied, Bad address, …) are not.", "note_required": false },
-    { "id": "B-P11", "dataset": "bgl", "label": "anomaly", "title": "Machine check interrupt", "text": "KERNEL FATAL “machine check interrupt …” (KERNMC).", "note_required": false },
-    { "id": "B-P12", "dataset": "bgl", "label": "anomaly", "title": "Kernel panic", "text": "KERNEL FATAL “kernel panic” (KERNPAN).", "note_required": false },
-    { "id": "B-C01", "dataset": "bgl", "label": "anomaly", "title": "Other published BGL alert category", "text": "Matches another alert category from the published BGL alert list. Name the category and quote the key text in the note.", "note_required": true },
-    { "id": "B-N01", "dataset": "bgl", "label": "normal", "title": "Non-alert severity level", "text": "Level is INFO, WARNING, SEVERE, ERROR (anything other than FATAL / FAILURE). All published BGL alerts come from FATAL / FAILURE levels, so such lines are normal even if they contain words like “error”.", "note_required": false },
-    { "id": "B-D0", "dataset": "bgl", "label": "normal", "title": "FATAL / FAILURE but no alert rule matches", "text": "The level is FATAL or FAILURE but the message matches none of the published alert rules. Explain in the note why you consider it routine.", "note_required": true },
-
-    { "id": "T-P01", "dataset": "tb", "label": "anomaly", "title": "VAPI: EVAPI_process_local_mad failed", "text": "kernel “[KERNEL_IB][…] … EVAPI_process_local_mad failed, return code = … (Fatal error (Local Catastrophic Error))” (VAPI).", "note_required": false },
-    { "id": "T-P02", "dataset": "tb", "label": "anomaly", "title": "PBS_CON: connection refused", "text": "pbs_mom “Connection refused (111) in open_demux …” (PBS_CON).", "note_required": false },
-    { "id": "T-P03", "dataset": "tb", "label": "anomaly", "title": "MPT: SCSI task abort", "text": "kernel “mptscsih: ioc0: attempting task abort! …” (MPT).", "note_required": false },
-    { "id": "T-P04", "dataset": "tb", "label": "anomaly", "title": "EXT_FS: ext3 error", "text": "kernel “EXT3-fs error (device …): … ” (EXT_FS).", "note_required": false },
-    { "id": "T-P05", "dataset": "tb", "label": "anomaly", "title": "CPU: losing ticks", "text": "kernel “Losing some ticks… checking if CPU frequency changed.” (CPU).", "note_required": false },
-    { "id": "T-P06", "dataset": "tb", "label": "anomaly", "title": "SCSI: rejecting I/O to offline device", "text": "kernel “scsi…: rejecting I/O to offline device” (SCSI).", "note_required": false },
-    { "id": "T-P07", "dataset": "tb", "label": "anomaly", "title": "ECC: memory error", "text": "Server Administrator memory-device ECC error report (ECC).", "note_required": false },
-    { "id": "T-P08", "dataset": "tb", "label": "anomaly", "title": "PBS_BFD: bad file descriptor", "text": "pbs_mom “Bad file descriptor (9) in tm_request …” (PBS_BFD).", "note_required": false },
-    { "id": "T-P09", "dataset": "tb", "label": "anomaly", "title": "CHK_DSK: disk fault", "text": "check-disks “… Fault Status assert …” (CHK_DSK).", "note_required": false },
-    { "id": "T-P10", "dataset": "tb", "label": "anomaly", "title": "NMI received", "text": "kernel “Uhhuh. NMI received …” (NMI).", "note_required": false },
-    { "id": "T-D0", "dataset": "tb", "label": "normal", "title": "Routine operation (no alert rule matches)", "text": "Matches none of the published alert rules and records the normal result of a routine operation. Say what the operation is in the note (e.g. “routine service start/stop”).", "note_required": true },
-
-    { "id": "H-N01", "dataset": "hdfs", "label": "normal", "title": "Complete normal lifecycle", "text": "Only allocation, write (3 replicas), read / verify and delete events; replica counts are consistent and deletion is complete. A different event order does not matter. “Got exception while serving” during the read phase is part of normal reads.", "note_required": false },
-    { "id": "H-N02", "dataset": "hdfs", "label": "normal", "title": "Normal lifecycle without deletion", "text": "Complete, consistent write (and possibly read / verify) of all replicas; the block was simply never deleted within the log.", "note_required": false },
-    { "id": "H-N03", "dataset": "hdfs", "label": "normal", "title": "Normal re-replication", "text": "Extra replica transfer (ask … to replicate, Starting thread to transfer, Transmitted block) that completes consistently.", "note_required": false },
-    { "id": "H-A01", "dataset": "hdfs", "label": "anomaly", "title": "Write / receive exception", "text": "Exceptions on the write path: writeBlock … received exception, PacketResponder … Exception / Interrupted, Exception in receiveBlock, Exception writing block to mirror, Receiving empty packet.", "note_required": false },
-    { "id": "H-A02", "dataset": "hdfs", "label": "anomaly", "title": "Inconsistent replica bookkeeping", "text": "Redundant addStoredBlock, addStoredBlock for a block that does not belong to any file, replica counts that do not match, or a block removed from neededReplications.", "note_required": false },
-    { "id": "H-A03", "dataset": "hdfs", "label": "anomaly", "title": "Delete / transfer failure", "text": "Unexpected error trying to delete block (BlockInfo not found), Failed to transfer, PendingReplicationMonitor timed out, block is not valid / cannot be written to.", "note_required": false },
-
-    { "id": "U-01", "dataset": "*", "label": "unknown", "title": "Cannot decide", "text": "The rules and the visible evidence do not settle the label. Describe what is missing in the note.", "note_required": true },
-    { "id": "X-01", "dataset": "*", "label": "*", "title": "Other reason", "text": "None of the listed rules applies. Explain your reasoning in the note.", "note_required": true }
+    {
+      "id": "B-N01",
+      "dataset": "bgl",
+      "label": "normal",
+      "title": "Severity not FATAL / FAILURE",
+      "text": "The severity (the word after RAS|NULL <COMPONENT>) is not FATAL and not FAILURE.",
+      "note_required": false,
+      "source": "DSN 2007, Table 5, §3.2"
+    },
+    {
+      "id": "B-A01",
+      "dataset": "bgl",
+      "label": "anomaly",
+      "title": "data TLB error interrupt",
+      "text": "FATAL/FAILURE; message contains `data TLB error interrupt`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (KERNDTLB)"
+    },
+    {
+      "id": "B-A02",
+      "dataset": "bgl",
+      "label": "anomaly",
+      "title": "data storage interrupt",
+      "text": "FATAL/FAILURE; message contains `data storage interrupt`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (KERNSTOR)"
+    },
+    {
+      "id": "B-A03",
+      "dataset": "bgl",
+      "label": "anomaly",
+      "title": "ciod: Error reading message prefix … CioStream",
+      "text": "FATAL/FAILURE; message contains `ciod: Error reading message prefix` and `CioStream`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (APPSEV, APPRES)"
+    },
+    {
+      "id": "B-A04",
+      "dataset": "bgl",
+      "label": "anomaly",
+      "title": "Lustre mount FAILED",
+      "text": "FATAL/FAILURE; message contains `Lustre mount FAILED`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (KERNMNTF)"
+    },
+    {
+      "id": "B-A05",
+      "dataset": "bgl",
+      "label": "anomaly",
+      "title": "rts: kernel terminated for reason",
+      "text": "FATAL/FAILURE; message contains `rts: kernel terminated for reason`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (KERNTERM)"
+    },
+    {
+      "id": "B-A06",
+      "dataset": "bgl",
+      "label": "anomaly",
+      "title": "Error receiving packet on tree network",
+      "text": "FATAL/FAILURE; message contains `Error receiving packet on tree network`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (KERNREC)"
+    },
+    {
+      "id": "B-A07",
+      "dataset": "bgl",
+      "label": "anomaly",
+      "title": "ciod: failed to read message prefix on control stream",
+      "text": "FATAL/FAILURE; message contains `ciod: failed to read message prefix on control stream`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (APPREAD)"
+    },
+    {
+      "id": "B-A08",
+      "dataset": "bgl",
+      "label": "anomaly",
+      "title": "rts panic! - stopping execution",
+      "text": "FATAL/FAILURE; message contains `rts panic! - stopping execution`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (KERNRTSP)"
+    },
+    {
+      "id": "B-A09",
+      "dataset": "bgl",
+      "label": "anomaly",
+      "title": "ciod: Error creating node map from file",
+      "text": "FATAL/FAILURE; message contains `ciod: Error creating node map from file`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (APPUNAV)"
+    },
+    {
+      "id": "B-A10",
+      "dataset": "bgl",
+      "label": "anomaly",
+      "title": "machine check interrupt",
+      "text": "FATAL/FAILURE; message contains `machine check interrupt`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (31 Others)"
+    },
+    {
+      "id": "B-A11",
+      "dataset": "bgl",
+      "label": "anomaly",
+      "title": "kernel panic (KERNEL)",
+      "text": "FATAL/FAILURE; component is KERNEL and message contains `kernel panic`.",
+      "note_required": false,
+      "source": "DSN 2007, §3.2 ($5 ~ /KERNEL/ && /kernel panic/)"
+    },
+    {
+      "id": "B-N02",
+      "dataset": "bgl",
+      "label": "normal",
+      "title": "FATAL / FAILURE, no alert rule",
+      "text": "Severity is FATAL or FAILURE and no rule B-A01 … B-A11 applies.",
+      "note_required": false,
+      "source": "DSN 2007, §3.2, Table 2 caption, Table 5 caption; ICDM 2008, §1, §3.1"
+    },
+    {
+      "id": "T-A01",
+      "dataset": "tb",
+      "label": "anomaly",
+      "title": "[KERNEL_IB] … Local Catastrophic Error",
+      "text": "The line contains `[KERNEL_IB]` and `Local Catastrophic Error`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (VAPI)"
+    },
+    {
+      "id": "T-A02",
+      "dataset": "tb",
+      "label": "anomaly",
+      "title": "Connection refused (111) in open_demux",
+      "text": "The line contains `Connection refused (111) in open_demux`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (PBS_CON)"
+    },
+    {
+      "id": "T-A03",
+      "dataset": "tb",
+      "label": "anomaly",
+      "title": "mptscsih: … attempting task abort!",
+      "text": "The line contains `mptscsih:` and `attempting task abort!`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (MPT)"
+    },
+    {
+      "id": "T-A04",
+      "dataset": "tb",
+      "label": "anomaly",
+      "title": "EXT3-fs error … Detected aborted journal",
+      "text": "The line contains `EXT3-fs error` and `Detected aborted journal`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (EXT_FS); ICDM 2008, Table 1"
+    },
+    {
+      "id": "T-A05",
+      "dataset": "tb",
+      "label": "anomaly",
+      "title": "Losing some ticks",
+      "text": "The line contains `Losing some ticks... checking if CPU frequency changed.`",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (CPU)"
+    },
+    {
+      "id": "T-A06",
+      "dataset": "tb",
+      "label": "anomaly",
+      "title": "rejecting I/O to offline device",
+      "text": "The line contains `rejecting I/O to offline device`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (SCSI)"
+    },
+    {
+      "id": "T-A07",
+      "dataset": "tb",
+      "label": "anomaly",
+      "title": "EventID: 1404 … Memory device",
+      "text": "The line contains `EventID: 1404` and `Memory device`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (ECC)"
+    },
+    {
+      "id": "T-A08",
+      "dataset": "tb",
+      "label": "anomaly",
+      "title": "Bad file descriptor (9) in tm_request",
+      "text": "The line contains `Bad file descriptor (9) in tm_request`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (PBS_BFD)"
+    },
+    {
+      "id": "T-A09",
+      "dataset": "tb",
+      "label": "anomaly",
+      "title": "check-disks … Fault Status assert",
+      "text": "The line contains `check-disks` and `Fault Status assert`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (CHK_DSK)"
+    },
+    {
+      "id": "T-A10",
+      "dataset": "tb",
+      "label": "anomaly",
+      "title": "NMI received",
+      "text": "The line contains `NMI received`.",
+      "note_required": false,
+      "source": "DSN 2007, Table 4 (NMI)"
+    },
+    {
+      "id": "T-N01",
+      "dataset": "tb",
+      "label": "normal",
+      "title": "No alert rule",
+      "text": "No rule T-A01 … T-A10 applies.",
+      "note_required": false,
+      "source": "DSN 2007, §3.2, Table 2 caption; ICDM 2008, §1, §3.1"
+    },
+    {
+      "id": "H-A01",
+      "dataset": "hdfs",
+      "label": "anomaly",
+      "title": "Failure event in the trace",
+      "text": "The trace contains any of T7, T8, T10, T12, T13, T14, T17, T20, T24, T27, T28, T29, T31, T32.",
+      "note_required": false,
+      "source": "Xu et al., SOSP 2009, Table 7 (#2, #5–#11); Landauer et al., FSE 2024, §3.1, Table 1, Fig. 2"
+    },
+    {
+      "id": "H-A02",
+      "dataset": "hdfs",
+      "label": "anomaly",
+      "title": "Write not complete",
+      "text": "Not all of: T22 ≥ 1, T5 ≥ 3, T9+T6 ≥ 3, T11 ≥ 3, T26 ≥ 3.",
+      "note_required": false,
+      "source": "Xu et al., SOSP 2009, §6.4 and Table 7 (#2, #3); Landauer et al., FSE 2024, §3.1"
+    },
+    {
+      "id": "H-A03",
+      "dataset": "hdfs",
+      "label": "anomaly",
+      "title": "Re-replication, then file deletion",
+      "text": "T25 (re-replication) and T23 (file deletion) both occur.",
+      "note_required": false,
+      "source": "Xu et al., SOSP 2009, §6.3 and Table 7 (#1, #4)"
+    },
+    {
+      "id": "H-N02",
+      "dataset": "hdfs",
+      "label": "normal",
+      "title": "Re-replication without file deletion",
+      "text": "T25 occurs, T23 does not, and no rule above applies.",
+      "note_required": false,
+      "source": "Xu et al., SOSP 2009, Table 7 (false positive: Normal background migration)"
+    },
+    {
+      "id": "H-N01",
+      "dataset": "hdfs",
+      "label": "normal",
+      "title": "Complete write, no anomaly rule",
+      "text": "Any trace not decided by H-A01, H-A02, H-A03, H-U01 or H-N02.",
+      "note_required": false,
+      "source": "Xu et al., SOSP 2009, §6.3, Table 7 (false positive: Multiple replica), HADOOP-3678; Landauer et al., FSE 2024, §3.1, Fig. 4"
+    },
+    {
+      "id": "H-U01",
+      "dataset": "hdfs",
+      "label": "unknown",
+      "title": "T1, T15 or T19 without a deciding rule",
+      "text": "The trace contains T1, T15 or T19 and none of H-A01, H-A02, H-A03 applies.",
+      "note_required": false,
+      "source": "No published type covers these events"
+    },
+    {
+      "id": "U-PARSE",
+      "dataset": "*",
+      "label": "unknown",
+      "title": "Text unreadable",
+      "text": "The raw text is empty, cut off or garbled so that it cannot be checked against the rules.",
+      "note_required": false,
+      "source": "—"
+    }
   ]
 }

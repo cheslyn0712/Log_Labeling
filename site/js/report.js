@@ -1,5 +1,12 @@
-// What students report: per task, effective labeling time, accuracy and the "can't tell" share. Computed from the per-group results stored when a group's answer is shown.
-import { csvRow } from './util.js';
+// Metrics and the Excel export.
+//
+// Each participant gives every group of a task ONE label: normal, anomaly (Anomalous) or unknown (Can't tell).
+// Truth of a group = anomalous if any of its members (lines; HDFS: blocks) is anomalous, else normal.
+// Group-level metrics use one item per labeled group; member-level metrics apply the group's label to
+// every member. "Can't tell" items are excluded from accuracy and precision and count as misses in recall.
+
+export const LABEL_NAMES = { normal: 'Normal', anomaly: 'Anomalous', unknown: "Can't tell" };
+export const LABEL_CODES = { normal: 0, anomaly: 1, unknown: 'U' };
 
 export function taskRef(entry) { return entry.part ? `${entry.key}~${entry.part.split('/')[0]}` : entry.key; }
 
@@ -8,47 +15,111 @@ export function assignedGroups(entry, taskJson, exampleIds) {
   return taskJson.groups.filter((m) => !exampleIds.has(m.id)).map((m) => m.g);
 }
 
-/**
- * Definitions (members = lines for BGL / Thunderbird, blocks for HDFS; submitted groups only):
- *   accuracy   = correct / judged, judged = members labeled Normal or Anomalous
- *   can't tell = members labeled "Can't tell" / all members of submitted groups
- *   time       = effective labeling time of all the task's groups (answer review not included)
- */
-export function taskSummary(t, assigned) {
-  const s = { groups: assigned.length, done: 0, ms: 0, members: 0, judged: 0, correct: 0, unknown: 0 };
-  for (const g of assigned) {
-    const x = t?.groups[g];
-    if (!x) continue;
-    s.ms += x.activeMs || 0;
-    if (x.status !== 'submitted') continue;
-    s.done++;
-    const r = x.result;
-    if (r) for (const k of ['members', 'judged', 'correct', 'unknown']) s[k] += r[k] || 0;
+// answer array of one group -> { normal, anomalous, truth }
+export function groupTruth(ans, kind) {
+  let normal = 0, anomalous = 0;
+  for (const a of ans) {
+    if (kind === 'blocks') { if (a) anomalous++; else normal++; }
+    else { normal += a[0]; anomalous += a[1]; }
   }
-  s.accuracy = s.judged ? s.correct / s.judged : null;
-  s.cantTell = s.members ? s.unknown / s.members : null;
-  return s;
+  return { normal, anomalous, truth: anomalous > 0 ? 'anomaly' : 'normal' };
+}
+
+// rows: [{ label, normal, anomalous }] (counts of truly normal / anomalous items behind each label)
+export function metrics(rows) {
+  let tp = 0, fp = 0, tn = 0, fn = 0, unk = 0, unkAnom = 0;
+  for (const r of rows) {
+    if (r.label === 'normal') { tn += r.normal; fn += r.anomalous; }
+    else if (r.label === 'anomaly') { tp += r.anomalous; fp += r.normal; }
+    else if (r.label === 'unknown') { unk += r.normal + r.anomalous; unkAnom += r.anomalous; }
+  }
+  const judged = tp + fp + tn + fn;
+  const div = (a, b) => (b > 0 ? a / b : null);
+  const pos = tp + fn + unkAnom;
+  return {
+    items: judged + unk, judged, tp, fp, tn, fn, unknown: unk,
+    accuracy: div(tp + tn, judged),
+    precision: div(tp, tp + fp),
+    recall: div(tp, pos),
+    f1: pos > 0 ? (2 * tp) / (2 * tp + fp + fn + unkAnom) : null,
+    cantTell: div(unk, judged + unk),
+  };
+}
+
+export function taskTime(t) {
+  const auto = Object.values(t?.groups || {}).reduce((a, x) => a + (x.activeMs || 0), 0);
+  const adjust = t?.timeAdjustMs || 0;
+  return { auto, adjust, total: Math.max(0, auto + adjust) };
+}
+
+// summary of one assignment; truths: Map g -> groupTruth (may be partial; metrics use labeled groups with known truth)
+export function taskSummary(t, assigned, truths) {
+  const s = { groups: assigned.length, labeled: 0, normal: 0, anomaly: 0, unknown: 0, checked: 0 };
+  const gRows = [], mRows = [];
+  for (const g of assigned) {
+    const x = t?.groups?.[g];
+    if (!x || !x.label) continue;
+    s.labeled++; s[x.label]++;
+    if (x.revealed) s.checked++;
+    const tr = truths?.get(g);
+    if (!tr) continue;
+    gRows.push({ label: x.label, normal: tr.truth === 'normal' ? 1 : 0, anomalous: tr.truth === 'anomaly' ? 1 : 0 });
+    mRows.push({ label: x.label, normal: tr.normal, anomalous: tr.anomalous });
+  }
+  return { ...s, time: taskTime(t), group: metrics(gRows), member: metrics(mRows) };
 }
 
 export const pct = (x) => (x == null ? '—' : (100 * x).toFixed(1) + '%');
-export function hours(ms) {
+export const f1s = (x) => (x == null ? 'n/a' : x.toFixed(3));
+export function hm(ms) {
   const m = Math.round((ms || 0) / 60000);
   return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`;
 }
+const num = (x, d = 4) => (x == null ? '' : +x.toFixed(d));
+const iso = (ts) => (ts ? new Date(ts).toISOString() : '');
 
-export function summaryText(name, rows) {
-  const lines = [`Log labeling results — ${name}`];
-  for (const { display, s } of rows) {
-    lines.push(`${display}: ${s.done}/${s.groups} groups · labeling time ${hours(s.ms)} · accuracy ${pct(s.accuracy)} · can't tell ${pct(s.cantTell)}`);
+/**
+ * Workbook for one participant.
+ * items: [{ entry, tj, t, assigned, truths, unit }]
+ */
+export function workbook(participant, dataVersion, items) {
+  const summary = [[
+    'participant', 'task', 'dataset', 'unit', 'groups_total', 'groups_labeled', 'labeled_normal', 'labeled_anomalous', 'labeled_cant_tell', 'answers_checked',
+    'time_hours', 'time_auto_hours', 'time_adjust_hours',
+    'group_accuracy', 'group_precision', 'group_recall', 'group_f1', 'group_cant_tell_rate', 'group_tp', 'group_fp', 'group_tn', 'group_fn',
+    'member_accuracy', 'member_precision', 'member_recall', 'member_f1', 'member_cant_tell_rate', 'members_labeled', 'data_version',
+  ]];
+  const groups = [[
+    'participant', 'task', 'dataset', 'group_id', 'group_index', 'queue_position', 'label', 'label_code', 'rule', 'note',
+    'labeled_at', 'label_changes', 'answer_checked', 'time_seconds', 'members', 'true_normal', 'true_anomalous', 'true_group_label', 'group_correct', 'members_correct',
+  ]];
+  const timeLog = [['participant', 'task', 'time', 'event', 'detail']];
+  for (const it of items) {
+    const { entry, tj, t, assigned, truths, unit } = it;
+    const s = taskSummary(t, assigned, truths);
+    summary.push([participant, entry.display, tj.dataset, unit, s.groups, s.labeled, s.normal, s.anomaly, s.unknown, s.checked,
+      num(s.time.total / 3600000), num(s.time.auto / 3600000), num(s.time.adjust / 3600000),
+      num(s.group.accuracy), num(s.group.precision), num(s.group.recall), num(s.group.f1), num(s.group.cantTell), s.group.tp, s.group.fp, s.group.tn, s.group.fn,
+      num(s.member.accuracy), num(s.member.precision), num(s.member.recall), num(s.member.f1), num(s.member.cantTell), s.member.items, dataVersion]);
+    const order = t?.order || assigned;
+    order.forEach((g, k) => {
+      const x = t?.groups?.[g] || {};
+      const tr = truths?.get(g);
+      const label = x.label || '';
+      let gc = '', mc = '';
+      if (tr && (label === 'normal' || label === 'anomaly')) {
+        gc = label === tr.truth ? 1 : 0;
+        mc = label === 'normal' ? tr.normal : tr.anomalous;
+      }
+      groups.push([participant, entry.display, tj.dataset, tj.groups[g].id, g, k + 1, label ? LABEL_NAMES[label] : '', label ? LABEL_CODES[label] : '',
+        x.rule || '', x.note || '', iso(x.at), x.edits || 0, x.revealed ? 1 : 0, num((x.activeMs || 0) / 1000, 1),
+        tr ? tr.normal + tr.anomalous : tj.groups[g].n, tr ? tr.normal : '', tr ? tr.anomalous : '', tr ? LABEL_NAMES[tr.truth] : '', gc, mc]);
+    });
+    for (const e of t?.timeLog || []) timeLog.push([participant, entry.display, iso(e.at), e.type, e.detail || '']);
   }
-  return lines.join('\n');
-}
-
-export function summaryCsv(name, rows) {
-  const out = [csvRow(['name', 'task', 'groups_done', 'groups_total', 'labeling_hours', 'accuracy', 'cant_tell_rate', 'members_done', 'unit'])];
-  for (const { display, s, unit } of rows) {
-    out.push(csvRow([name, display, s.done, s.groups, (s.ms / 3600000).toFixed(2),
-      s.accuracy == null ? '' : s.accuracy.toFixed(4), s.cantTell == null ? '' : s.cantTell.toFixed(4), s.members, unit]));
-  }
-  return out.join('\r\n') + '\r\n';
+  return [
+    { name: 'Summary', rows: summary },
+    { name: 'Groups', rows: groups },
+    { name: 'Time log', rows: timeLog },
+  ];
 }

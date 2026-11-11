@@ -384,3 +384,18 @@ a.qrow:hover { background: var(--accent-2); text-decoration: none; }
 .verdict .small { color: var(--text); }
 .verdict.unsure { background: var(--unknown-bg); color: var(--unknown); }
 .tbl.results td, .tbl.results th { padding: 7px 10px; }
+
+/* simplified labeling panel */
+.big-labels .seg-btn { padding: 12px 4px; font-size: 15px; font-weight: 650; }
+.big-labels .seg-btn:disabled { cursor: default; opacity: .75; }
+.label-status { min-height: 18px; }
+.nav-row { display: flex; gap: 8px; }
+.nav-row .btn { flex: 1; padding: 9px 10px; }
+.keys { text-align: center; }
+.answer-box { display: flex; flex-direction: column; gap: 6px; }
+.task-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.clock-row { margin: 4px 0 10px; }
+.clock.compact .clock-main { font-size: 16px; min-width: 64px; }
+.clock .btn.tiny { padding: 2px 8px; }
+.task-card .ref { color: var(--text); margin-top: 2px; }
+.qstat { width: 170px; }

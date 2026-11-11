@@ -52,6 +52,9 @@ function fresh(name, dataVersion, taskFp) {
   };
 }
 
+// one participant's record for one group
+export function newGroup() { return { label: null, rule: '', note: '', at: null, edits: 0, revealed: false, activeMs: 0, opens: 0 }; }
+
 export function uid(prefix) { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 export class Store {
@@ -155,7 +158,7 @@ export class Store {
   ensureTask(ref, order) {
     if (!this.state.tasks[ref]) {
       this.act('task-start', { ref }, (s) => {
-        if (!s.tasks[ref]) s.tasks[ref] = { startedAt: Date.now(), order, groups: {}, reviewMs: 0 };
+        if (!s.tasks[ref]) s.tasks[ref] = { startedAt: Date.now(), order, groups: {}, reviewMs: 0, paused: false, timeAdjustMs: 0, timeLog: [] };
       });
     }
     return this.state.tasks[ref];
@@ -163,7 +166,7 @@ export class Store {
 
   group(ref, g) {
     const t = this.state.tasks[ref];
-    if (!t.groups[g]) t.groups[g] = { status: 'open', judgments: [], activeMs: 0, opens: 0, defers: 0, instanceFields: [] };
+    if (!t.groups[g]) t.groups[g] = newGroup();
     return t.groups[g];
   }
 

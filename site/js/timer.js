@@ -4,7 +4,7 @@
 // A raw sample is stored every 15 s so time can be recomputed later with other thresholds.
 // Time is kept as pending deltas and added to the freshest saved state on each write,
 // so several open windows never overwrite each other's time (only the focused one counts).
-import { TAB_ID } from './store.js';
+import { TAB_ID, newGroup } from './store.js';
 
 export const IDLE_MS = 60_000;
 export const SAMPLE_MS = 15_000;
@@ -17,7 +17,7 @@ export class Timer {
     this.store = null;
     this.ctx = null;
     this.session = null;       // in-memory copy, merged into state.sessions by id
-    this.paused = false;
+    this.idleMs = IDLE_MS;
     this.lastInput = Date.now();
     this.lastTick = Date.now();
     this.lastSample = Date.now();
@@ -70,9 +70,9 @@ export class Timer {
 
   computeStatus() {
     if (!this.ctx) return 'off';
-    if (this.paused) return 'paused';
+    if (this.isPaused()) return 'paused';
     const t = this.now();
-    if (!this.isVisible() || !this.hasFocus() || t - this.lastInput > IDLE_MS) return 'idle';
+    if (!this.isVisible() || !this.hasFocus() || t - this.lastInput > this.idleMs) return 'idle';
     return 'timing';
   }
 
@@ -87,7 +87,6 @@ export class Timer {
     this.tick();
     this.endSession('leave');
     this.ctx = ctx;
-    this.paused = false;
     if (ctx) this.startSession();
     this.updateStatus();
   }
@@ -109,8 +108,19 @@ export class Timer {
     this.session = null;
   }
 
-  pause() { if (!this.ctx || this.paused) return; this.tick(); this.endSession('pause'); this.paused = true; this.store?.log('pause', {}); this.updateStatus(); }
-  resume() { if (!this.paused) return; this.paused = false; this.lastInput = this.now(); this.lastTick = this.now(); this.startSession(); this.store?.log('resume', {}); this.updateStatus(); }
+  // the pause switch belongs to a task and is saved, so it survives page changes and reloads
+  isPaused(ref = this.ctx?.type === 'label' ? this.ctx.ref : null) { return !!(ref && this.store?.task(ref)?.paused); }
+  setPaused(ref, paused) {
+    if (!this.store?.task(ref) || this.isPaused(ref) === paused) return;
+    this.tick();
+    this.store.act(paused ? 'timer-pause' : 'timer-resume', { ref }, (s) => {
+      const t = s.tasks[ref];
+      t.paused = paused;
+      (t.timeLog = t.timeLog || []).push({ at: Date.now(), type: paused ? 'pause' : 'resume' });
+    });
+    this.lastInput = this.now(); this.lastTick = this.now();
+    this.updateStatus();
+  }
 
   // effective ms of the current context (saved + not yet saved)
   displayMs() {
@@ -146,7 +156,7 @@ export class Timer {
       this.pendingSamples.push([
         t, c ? c.type[0].toUpperCase() : '-', c?.ref ?? c?.ds ?? null, c?.g ?? null,
         this.isVisible() ? 1 : 0, this.hasFocus() ? 1 : 0, Math.round((t - this.lastInput) / 1000),
-        this.paused ? 1 : 0, Math.round(this.sampleActive), this.sampleInputs, TAB_ID,
+        this.isPaused() ? 1 : 0, Math.round(this.sampleActive), this.sampleInputs, TAB_ID,
       ]);
       if (this.session) this.session.last = t;
       this.dirty = true;
@@ -163,7 +173,7 @@ export class Timer {
       if (type === 'L') {
         const t = st.tasks[a];
         if (!t) continue;
-        if (!t.groups[b]) t.groups[b] = { status: 'open', judgments: [], activeMs: 0, opens: 0, defers: 0, instanceFields: [] };
+        if (!t.groups[b]) t.groups[b] = newGroup();
         t.groups[b].activeMs = (t.groups[b].activeMs || 0) + ms;
       } else if (type === 'R') {
         if (st.tasks[a]) st.tasks[a].reviewMs = (st.tasks[a].reviewMs || 0) + ms;

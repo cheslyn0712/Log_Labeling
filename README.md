@@ -1,14 +1,32 @@
 # Log Labeling Study
 
-A static website for a log-labeling study. Students enter their name, read one worked example per dataset (BGL, Thunderbird, HDFS), and then label groups of raw log lines (or HDFS blocks) semi-automatically: one judgment for a whole group, a split by a field value, or judgments on ticked messages. Submitting a group locks it and immediately shows its true labels. The site times effective labeling with a visible clock and keeps all progress in the student's own browser (any number of windows can be open).
+A static website for a log-labeling study. Participants (codes A, B, C, D) label groups of raw log lines (BGL, Thunderbird) or HDFS blocks with one label per group: **Normal**, **Anomalous** or **Can't tell**. Every group is labeled by two participants, so agreement between annotators can be reported alongside accuracy. The site keeps all work in the participant's browser and exports an Excel file per participant.
 
 There is no server and no database. Everything under `site/` is served as-is by GitHub Pages.
 
-## Pages
+## What a participant does
 
-`index.html` is the only page: name entry, tasks, worked examples, labeling (each group's answer is shown after it is submitted), and **Results & backup**.
+1. Enter the participant code. *Home* lists the three tasks with a reference time for each.
+2. Open a group, read its messages (or block logs), and click a label (keys 1 / 2 / 3). Labels are saved at once and can be changed. Choosing a rule and writing a note are optional.
+3. Optionally check the group's true label; this locks the label of that group.
+4. The task timer runs while a group is open and the participant is active; it can be paused, resumed and adjusted.
+5. On *Results*, download the Excel file and send it to the PI.
 
-On **Results & backup** each student sees, per task, the three numbers they report — effective labeling time, accuracy, and the share labeled “Can't tell” — and can copy them as text or download them as CSV. Accuracy counts the lines (HDFS: blocks) labeled Normal or Anomalous in submitted groups; time spent reviewing answers or examples is not labeling time. A backup file keeps every raw judgment and time record.
+The labeling rules are on the Guide page (`site/guide.md`) and the Rules page (`site/rules.json`).
+
+## Excel export
+
+| Sheet | Content |
+|---|---|
+| Summary | per task: groups labeled, time (with manual adjustments), and at group and line/block level: accuracy, precision, recall, F1 (anomalous class), can't-tell rate |
+| Groups | every group: label, rule, note, time, number of label changes, whether the answer was checked, true normal / anomalous counts, true group label |
+| Time log | every pause, resume and time adjustment |
+
+The true label of a group is Anomalous if any of its lines (HDFS: blocks) is anomalous. Can't tell is left out of accuracy and precision and counts as a miss in recall.
+
+## Configuration
+
+`site/config.json`: `showAnswers` (whether participants may check true labels), `idleSeconds` (inactivity after which the timer stops), and the reference time shown for each task.
 
 ## Run locally
 
@@ -28,23 +46,13 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
 
 ```
 site/
-  index.html, css/, js/              the application (plain JavaScript modules, no build step)
-  examples.json                      the three worked-example groups (excluded from all queues and metrics)
-  rules.json                         rule list shown in the judgment form (replace with the final list)
-  guide.md                           labeling guide shown on the Guide page (replace with the final guide)
-  data/                              generated task data (see below)
+  index.html, css/, js/     the application (plain JavaScript modules, no build step)
+  config.json               answers on/off, idle time, reference times
+  guide.md, rules.json      labeling rules (Guide and Rules pages)
+  examples.json             one worked example per dataset (excluded from all tasks)
+  data/                     generated task data
 ```
-
-`rules.json` and `guide.md` can be replaced at any time without touching the code. Each rule has `id`, `dataset` (`bgl`, `tb`, `hdfs` or `*`), `label` (`normal`, `anomaly`, `unknown` or `*`), `title`, `text` and `note_required`.
 
 ## Data
 
-`site/data/` is produced by the PI's private build script and committed as-is. It contains, per task: a group index, one file per group, raw lines in files of 2,000 lines (HDFS: block traces), and one answer file per group. Answer files are AES-256-GCM encrypted only so they cannot be read at a glance; the site fetches a group's answer after the group is submitted. Task names in the data are opaque keys and display names only.
-
-The build is deterministic, so students' saved progress stays valid as long as the data version (shown on the PI page) does not change.
-
-## Notes for students
-
-- Use your own name; it only separates your work from other students' in the same browser.
-- Do not use a private / incognito window and do not clear browsing data. Export a backup regularly.
-- The datasets and their labels are public. Look at a group's answer only after submitting it.
+`site/data/` is generated by a private build script and committed as-is: per task a group index, one file per group, raw lines in files of 2,000 lines (HDFS: block traces), and one answer file per group. Answer files are AES-256-GCM encrypted only so they cannot be read at a glance. Task names in the data are opaque keys and display names only. The build is deterministic, so saved work stays valid across rebuilds that do not change the groups.

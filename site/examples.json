@@ -8,12 +8,19 @@
       "summary": "Template <*> L3 <*> error(s) (dcr <*> detected and corrected — component KERNEL, level INFO.",
       "sample": "… RAS KERNEL INFO 1 L3 EDRAM error(s) (dcr 0x0157) detected and corrected",
       "steps": [
-        "Open the Messages tab. There are about 100 distinct raw messages in this group.",
-        "Open the Fields tab. Field 1 is a count (1, 2, 3 …) and field 3 is a register address such as 0x0157). Both are only identifiers: tick “Instance info” for each. The messages then collapse into just two kinds: EDRAM and directory.",
-        "Click a few messages of each kind to read their raw lines, then open the context of one line."
+        "Read the header: component KERNEL, severity INFO. Rule B-N01 is the first BGL rule: the severity is not FATAL or FAILURE.",
+        "Open the Fields tab: field 1 is a count, field 2 is EDRAM or directory, field 3 is a register address. No value can turn an INFO line into an alert.",
+        "Click a few messages to read their raw lines, and open the context of one line. Every line shows RAS KERNEL INFO."
       ],
-      "decision": { "mode": "propagate", "label": "normal", "rules": ["B-N01"], "note": "" },
-      "explanation": "The level is INFO, not FATAL or FAILURE, and the message says the error was “detected and corrected” — a routine counter report. All BGL alerts come from FATAL / FAILURE levels, so an INFO line is normal even when it contains the word “error”."
+      "decision": {
+        "mode": "propagate",
+        "label": "normal",
+        "rules": [
+          "B-N01"
+        ],
+        "note": ""
+      },
+      "explanation": "B-N01 decides for every line of the group: the severity is INFO. The word “error” in the message does not matter; only FATAL and FAILURE lines can be alerts, and only when an alert rule matches. Label for the group: Normal."
     },
     {
       "dataset": "tb",
@@ -22,25 +29,40 @@
       "summary": "Template <*> <*> succeeded — service acpid.",
       "sample": "acpid: acpid startup succeeded  /  acpid: acpid shutdown succeeded",
       "steps": [
-        "Open the Fields tab. Field 2 takes the values startup / shutdown. It is a key field (not instance info), so look at both values.",
+        "Go through T-A01 … T-A10: no alert phrase appears in the template, and field 2 only takes the values startup / shutdown, which cannot complete any alert phrase.",
         "Click each of the two messages to read their raw lines.",
-        "Open the context of a line: it sits in a run of service start / stop records written while a node boots or shuts down."
+        "Open the context of a line: it sits in a run of service start / stop records written while a node boots or shuts down. Context does not change the label; it only confirms what you read."
       ],
-      "decision": { "mode": "propagate", "label": "normal", "rules": ["T-D0"], "note": "Routine service start/stop" },
-      "explanation": "No published alert rule matches. By definition this is the successful result of a routine operation."
+      "decision": {
+        "mode": "propagate",
+        "label": "normal",
+        "rules": [
+          "T-N01"
+        ],
+        "note": ""
+      },
+      "explanation": "No rule T-A01 … T-A10 applies to any line of the group, so T-N01 decides. Label for the group: Normal."
     },
     {
       "dataset": "hdfs",
       "id": "H90039c1fc384",
       "title": "HDFS worked example",
-      "summary": "Count vector: allocate T22×1; write three replicas T5, T9, T11, T26 ×3 each; read T3×1 and T4 (Got exception while serving) ×2; verify T2×3; delete T23, T21 ×3 each.",
+      "summary": "Count vector: allocate T22×1; write three replicas T5, T9, T11, T26 ×3 each; read T3×1 and T4 (Got exception while serving) ×2; verify T2×3; file deletion T23, T21 ×3 each.",
       "sample": "",
       "steps": [
-        "Open the full log of 2–3 blocks and compare two of them. Their event orders differ (dozens of different orders), but every one is a complete lifecycle: write 3 replicas → read and verify → delete 3 replicas.",
-        "Note that “Got exception while serving” appears in the read phase — it is part of the read events."
+        "H-A01: none of the failure events T7, T8, T10, T12, T13, T14, T17, T20, T24, T27, T28, T29, T31, T32 is in the count vector.",
+        "H-A02: the write is complete (T22 ≥ 1, T5 ≥ 3, T9 ≥ 3, T11 ≥ 3, T26 ≥ 3). H-A03: there is no T25. H-U01: no T1, T15, T19. H-N02: no T25.",
+        "Open the full log of 2–3 blocks and compare two of them: their event orders differ, but every one is write 3 replicas → read and verify → delete 3 replicas. T4 belongs to the read phase."
       ],
-      "decision": { "mode": "propagate", "label": "normal", "rules": ["H-N01"], "note": "" },
-      "explanation": "The blocks contain only write, read/verify and delete events; the replica count is consistent (3 each) and deletion is complete. A different event order does not change the conclusion."
+      "decision": {
+        "mode": "propagate",
+        "label": "normal",
+        "rules": [
+          "H-N01"
+        ],
+        "note": ""
+      },
+      "explanation": "No rule above H-N01 applies, so H-N01 decides. All blocks of the group share the count vector, so the group gets one label: Normal. The order of events does not matter."
     }
   ]
 }

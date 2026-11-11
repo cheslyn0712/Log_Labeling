@@ -1,21 +1,18 @@
-// Task page, labeling page (with the answer shown right after submitting), worked examples.
-import { h, clear, fmtDur, fmtTime, fmtNum, seededShuffle, digitKey, pct, b64ToBits } from './util.js';
-import { loadGroup, loadGroupAnswer, loadAnswers } from './data.js';
-import { JudgePanel } from './judge.js';
+// Task page, labeling page, worked examples.
+import { h, clear, fmtNum, seededShuffle, debounce } from './util.js';
+import { loadGroup, loadGroupAnswer } from './data.js';
 import { mountLineGroup } from './group-lines.js';
 import { mountHdfsGroup } from './group-hdfs.js';
-import { judgmentAgreement, itemCounts, resolveGroup, LABEL_NAMES, MODE_NAMES } from './core.js';
-import { App, entryByRef, taskJson, refTime, taskProgress, DATASET_NAMES, exportBackup } from './app.js';
-import { taskRef, assignedGroups, taskSummary } from './report.js';
+import { App, entryByRef, taskJson, DATASET_NAMES, refText } from './app.js';
+import { assignedGroups, taskRef, groupTruth, taskTime, hm, LABEL_NAMES } from './report.js';
 
-function loading(main, text = 'Loading…') { const el = h('div', { class: 'loading' }, h('span', { class: 'spinner' }), text); main.appendChild(el); return el; }
+function loading(el, text = 'Loading…') { const x = h('div', { class: 'loading' }, h('span', { class: 'spinner' }), text); el.appendChild(x); return x; }
 
 async function ctxFor(ref) {
   const e = entryByRef(ref);
   if (!e) throw new Error('This task is not assigned to you.');
   const tj = await taskJson(e.key);
-  const assigned = assignedGroups(e, tj, App.exampleIds);
-  return { e, tj, assigned, ref };
+  return { e, tj, assigned: assignedGroups(e, tj, App.exampleIds), ref };
 }
 
 function ensureTaskState(ref, assigned) {
@@ -28,32 +25,7 @@ function groupTitle(tj, g) {
   return m.template === '<EMPTY>' ? '(empty message)' : m.template;
 }
 
-function statusOf(t, g) {
-  const s = t?.groups[g];
-  if (!s) return 'todo';
-  if (s.status === 'submitted') return 'done';
-  if (s.status === 'merged-pending') return 'merge-pending';
-  if (s.judgments?.length) return 'started';
-  if (s.defers) return 'deferred';
-  return 'todo';
-}
-const STATUS_TEXT = { todo: 'To do', started: 'In progress', deferred: 'Later', done: 'Done', 'merge-pending': 'In a merge' };
-
-export function nextGroup(t, after) {
-  const order = t.order;
-  const isOpen = (g) => { const s = t.groups[g]; return !s || s.status === 'open'; };
-  const start = after == null ? 0 : order.indexOf(after) + 1;
-  for (let k = 0; k < order.length; k++) {
-    const g = order[(start + k) % order.length];
-    if (g !== after && isOpen(g)) return g;
-  }
-  return null;
-}
-
-function blocked(ref) {
-  if (App.store.incompatible.has(ref)) return 'The data of this task changed after you started it, so your earlier progress in it cannot be used here. Please contact the PI.';
-  return null;
-}
+export function firstUnlabeled(t) { return t.order.find((g) => !t.groups[g]?.label) ?? null; }
 
 // re-render the current page when another window changes something it shows
 export function watchExternal(sig) {
@@ -61,343 +33,284 @@ export function watchExternal(sig) {
   App.onExternal = () => { const s = sig(); if (s !== last) { last = s; App.route(); } };
 }
 
-// ------------------------------------------------------------------ results (answer agreement)
-// label covering each item of a submitted group
-function itemLabels(t, g, n) {
-  const rec = t.groups[g];
-  const lookup = (mi) => (t.groups[mi.g]?.judgments || []).find((j) => j.id === mi.jid);
-  return resolveGroup({ g, status: 'submitted', judgments: rec.judgments || [], mergedInto: rec.mergedInto }, n, lookup).labels;
-}
-
-// per-group counts behind the reported numbers (members = lines, or blocks for HDFS)
-export function groupResult(ans, labels, kind) {
-  const r = { v: 2, members: 0, judged: 0, correct: 0, unknown: 0, anomalies: 0 };
-  labels.forEach((L, i) => {
-    const [nn, na] = kind === 'blocks' ? (ans[i] ? [0, 1] : [1, 0]) : ans[i];
-    r.members += nn + na; r.anomalies += na;
-    if (!L) return;
-    if (L.label === 'normal') { r.judged += nn + na; r.correct += nn; }
-    else if (L.label === 'anomaly') { r.judged += nn + na; r.correct += na; }
-    else r.unknown += nn + na;
-  });
-  return r;
-}
-const resultOk = (r) => r && r.v === 2;
-
-// make sure every submitted group has a stored result (answers are fetched only for submitted groups)
-export async function ensureResults(ref, tj) {
-  const t = App.store.task(ref);
-  if (!t) return;
-  const missing = Object.entries(t.groups).filter(([, s]) => s.status === 'submitted' && !resultOk(s.result)).map(([g]) => +g);
-  if (!missing.length) return;
-  const ans = await loadAnswers(tj, missing);
-  const kind = ans.kind;
-  App.store.act('results', { ref, groups: missing }, (s) => {
-    const tk = s.tasks[ref];
-    for (const g of missing) {
-      if (!tk.groups[g] || tk.groups[g].status !== 'submitted') continue;
-      tk.groups[g].result = groupResult(ans.groups[g], itemLabels(tk, g, ans.groups[g].length), kind);
-    }
-  });
-}
-
-
-// ------------------------------------------------------------------ timer clock
+// ------------------------------------------------------------------ task timer (pause / resume / adjust)
 function clockText(ms) {
   const s = Math.floor((ms || 0) / 1000);
-  const hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
   const p = (x) => String(x).padStart(2, '0');
-  return hh ? `${hh}:${p(mm)}:${p(ss)}` : `${p(mm)}:${p(ss)}`;
+  return `${Math.floor(s / 3600)}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
 }
 
-function timerClock({ ref, label }) {
-  const el = h('div', { class: 'clock' });
+function taskClock(ref, { compact = false } = {}) {
+  const el = h('div', { class: 'clock' + (compact ? ' compact' : '') });
   const draw = () => {
     const tm = App.timer;
-    const s = tm.status();
-    const cur = tm.displayMs();
-    let total = null;
-    if (ref) {
-      const t = App.store.task(ref);
-      total = Object.values(t?.groups || {}).reduce((a, x) => a + (x.activeMs || 0), 0) + (tm.ctx?.type === 'label' ? tm.pending.get(tm.ctxKey()) || 0 : 0);
-    }
+    const t = App.store.task(ref);
+    if (!t) return;
+    const pend = tm.ctx?.type === 'label' && tm.ctx.ref === ref ? tm.pending.get(tm.ctxKey()) || 0 : 0;
+    const total = taskTime(t).total + pend;
+    const paused = !!t.paused;
+    const here = tm.ctx?.type === 'label' && tm.ctx.ref === ref;
+    const review = tm.ctx?.type === 'review' && tm.ctx.ref === ref;
+    const st = paused ? 'paused' : here ? tm.status() : review ? 'review' : 'off';
     clear(el);
-    el.className = 'clock st-' + s;
-    el.title = 'Counts only while this page is visible, the window is in front, and you used the keyboard, mouse or scrolled within the last 60 seconds.';
+    el.className = 'clock st-' + st + (compact ? ' compact' : '');
+    el.title = 'Task time. It runs while you are on a group of this task, the page is in front and you were active in the last minute.';
     el.appendChild(h('span', { class: 'dot' }));
-    el.appendChild(h('span', { class: 'clock-main num' }, clockText(cur)));
-    el.appendChild(h('span', { class: 'clock-label small' }, `${label} · ${{ timing: 'timing', paused: 'paused', idle: 'idle — move the mouse to resume', off: 'stopped' }[s]}`));
-    if (total != null) el.appendChild(h('span', { class: 'clock-total small muted' }, `task total ${fmtDur(total)}`));
-    if (tm.ctx) el.appendChild(s === 'paused'
-      ? h('button', { class: 'btn tiny', onclick: () => tm.resume() }, 'Resume')
-      : h('button', { class: 'btn tiny ghost', onclick: () => tm.pause() }, 'Pause'));
+    el.appendChild(h('span', { class: 'clock-main num' }, clockText(total)));
+    el.appendChild(h('span', { class: 'clock-label small' }, { timing: 'running', idle: 'idle', paused: 'paused', review: 'not timed (answer checked)', off: 'stopped' }[st]));
+    el.appendChild(paused
+      ? h('button', { class: 'btn tiny primary', onclick: () => App.timer.setPaused(ref, false) }, 'Resume')
+      : h('button', { class: 'btn tiny', onclick: () => App.timer.setPaused(ref, true) }, 'Pause'));
+    el.appendChild(h('button', { class: 'btn tiny ghost', title: 'Correct the recorded time', onclick: () => adjustTime(ref) }, 'Adjust'));
   };
   const off = App.timer.onChange(draw);
+  const off2 = App.store.onChange(draw);
   draw();
-  return { el, off };
+  return { el, off: () => { off(); off2(); } };
+}
+
+function adjustTime(ref) {
+  App.timer.tick(); App.timer.flush();
+  const t = App.store.task(ref);
+  const cur = taskTime(t);
+  const curMin = Math.round(cur.total / 60000);
+  const ans = prompt(`Set the labeling time of this task.\nCurrently ${Math.floor(curMin / 60)} h ${curMin % 60} min. Enter hours:minutes (e.g. 1:45):`, `${Math.floor(curMin / 60)}:${String(curMin % 60).padStart(2, '0')}`);
+  if (ans == null) return;
+  const m = /^\s*(\d+)\s*[:h]\s*(\d{1,2})\s*(min)?\s*$/.exec(ans) || /^\s*(\d+)\s*$/.exec(ans);
+  if (!m) { alert('Please enter hours:minutes, for example 1:45.'); return; }
+  const target = (m[2] != null ? +m[1] * 60 + +m[2] : +m[1]) * 60000;
+  App.store.act('time-adjust', { ref, to: target }, (s) => {
+    const tk = s.tasks[ref];
+    const now = taskTime(tk);
+    tk.timeAdjustMs = (tk.timeAdjustMs || 0) + (target - now.total);
+    (tk.timeLog = tk.timeLog || []).push({ at: Date.now(), type: 'adjust', detail: `${hm(now.total)} -> ${hm(target)}` });
+  });
 }
 
 // ------------------------------------------------------------------ task page
 export async function renderTask(main, ref) {
   const { e, tj, assigned } = await ctxFor(ref);
-  const blk = blocked(ref);
-  if (!blk) { ensureTaskState(ref, assigned); await ensureResults(ref, tj); }
-  const p = taskProgress(e, tj);
-  const t = App.store.task(ref);
-  const rt = refTime(e.display);
-  const exSeen = App.store.state.examples[tj.dataset]?.seenAt;
-  const unitName = tj.unit === 'block' ? 'blocks' : 'lines';
-  const ng = t ? nextGroup(t, null) : null;
-  const ex = App.examples.examples.find((x) => x.dataset === tj.dataset);
-  const sum = taskSummary(t, assigned);
+  const t = ensureTaskState(ref, assigned);
+  const done = assigned.filter((g) => t.groups[g]?.label).length;
+  const next = firstUnlabeled(t);
+  const unit = tj.unit === 'block' ? 'blocks' : 'lines';
+  const members = assigned.reduce((a, g) => a + tj.groups[g].n, 0);
+  const clock = taskClock(ref);
+  App.cleanup = clock.off;
 
   main.appendChild(h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'Home'), ' / ', e.display));
-  let primary;
-  if (blk) primary = null;
-  else if (ng != null) primary = h('a', { class: 'btn primary big', href: `#/task/${ref}/g/${ng}` }, p.done || Object.keys(t.groups).length ? 'Continue labeling →' : 'Start labeling →');
-  else primary = h('button', { class: 'btn big', onclick: exportBackup }, 'All done — export a backup');
   main.appendChild(h('div', { class: 'task-head' },
     h('div', null,
       h('h1', null, e.display),
       h('div', { class: 'task-stats' },
-        h('span', null, h('strong', null, `${fmtNum(p.done)} / ${fmtNum(assigned.length)}`), ' groups done'),
-        h('span', null, h('strong', null, fmtDur(p.ms)), ' labeling time'),
-        h('span', null, h('strong', null, pct(sum.accuracy)), ' accuracy'),
-        h('span', null, h('strong', null, pct(sum.cantTell)), " can't tell"),
-        p.remaining && p.est != null ? h('span', null, h('strong', null, `≈ ${fmtDur(p.est)}`), ' left at your pace') : null),
-      h('div', { class: 'bar' }, h('div', { class: 'bar-fill', style: { width: (100 * p.done / Math.max(1, assigned.length)) + '%' } })),
-      h('div', { class: 'small muted' }, `${fmtNum(p.members)} ${unitName} in ${fmtNum(assigned.length)} groups.` + (rt ? ` Reference effective time ${rt[0]} (range ${rt[1]}).` : ''))),
-    primary));
-  if (blk) main.appendChild(h('div', { class: 'notice err' }, blk));
+        h('span', null, h('strong', null, `${fmtNum(done)} / ${fmtNum(assigned.length)}`), ' groups labeled'),
+        h('span', null, `${fmtNum(members)} ${unit}`)),
+      h('div', { class: 'bar' }, h('div', { class: 'bar-fill', style: { width: (100 * done / Math.max(1, assigned.length)) + '%' } })),
+      h('div', { class: 'small muted' }, refText(e.display))),
+    h('div', { class: 'task-actions' },
+      h('a', { class: 'btn primary big', href: `#/task/${ref}/g/${next ?? t.order[0]}` }, done === 0 ? 'Start labeling →' : next != null ? 'Continue →' : 'Review labels'),
+      h('a', { class: 'btn ghost small', href: `#/example/${tj.dataset}` }, `${DATASET_NAMES[tj.dataset]} worked example`))));
+  main.appendChild(h('div', { class: 'row gap clock-row' }, h('span', { class: 'small muted' }, 'Task time'), clock.el));
 
-  main.appendChild(h('a', { class: 'example-strip' + (exSeen ? ' seen' : ''), href: `#/example/${tj.dataset}` },
-    h('span', { class: 'ex-step' }, exSeen ? '✓' : '1'),
-    h('span', { class: 'ex-body' },
-      h('strong', null, `${DATASET_NAMES[tj.dataset]} worked example`),
-      h('span', { class: 'small muted' }, exSeen ? ' — read; open it again any time' : ' — read it once before your first group (a few minutes, not labeling time)'),
-      ex ? h('div', { class: 'small mono ex-sum' }, ex.summary) : null),
-    h('span', { class: 'btn small' + (exSeen ? ' ghost' : ' primary') }, exSeen ? 'Open' : 'Read example')));
-
-  const order = t ? t.order : seededShuffle(assigned, `${App.name}|${ref}`);
   const q = h('div', { class: 'queue' });
-  order.forEach((g, k) => {
-    const s = statusOf(t, g);
-    const r = t?.groups[g]?.result;
-    const res = s === 'done' && resultOk(r) ? (r.correct === r.members ? h('span', { class: 'qres ok' }, '✓') : h('span', { class: 'qres bad' }, r.judged ? `✗ ${pct(r.correct / r.judged)}` : "? can't tell")) : null;
-    q.appendChild(h('a', { class: 'qrow st-' + s + (g === ng ? ' next' : ''), href: `#/task/${ref}/g/${g}` },
+  t.order.forEach((g, k) => {
+    const x = t.groups[g];
+    const lab = x?.label;
+    q.appendChild(h('a', { class: 'qrow' + (g === next ? ' next' : ''), href: `#/task/${ref}/g/${g}` },
       h('span', { class: 'qpos num' }, String(k + 1)),
-      h('span', { class: 'qstat' }, g === ng ? 'Next' : STATUS_TEXT[s], res ? ' ' : null, res),
+      h('span', { class: 'qstat' }, lab ? h('span', { class: 'pill lab-' + lab }, LABEL_NAMES[lab]) : h('span', { class: 'muted' }, g === next ? 'Next' : '—'),
+        x?.revealed ? h('span', { class: 'small muted' }, ' · checked') : null),
       h('span', { class: 'qtpl mono' }, groupTitle(tj, g))));
   });
-  main.appendChild(h('section', { class: 'sec' }, h('h2', null, `Groups (${fmtNum(order.length)})`, h('span', { class: 'muted small' }, ' — click any group; done groups show their answer')), q));
-  watchExternal(() => JSON.stringify([App.store.task(ref)?.order, Object.entries(App.store.task(ref)?.groups || {}).map(([g, s]) => [g, s.status, (s.judgments || []).length, !!s.result]), App.store.state.examples[tj.dataset]?.seenAt]));
+  main.appendChild(h('section', { class: 'sec' }, h('h2', null, `Groups (${fmtNum(t.order.length)})`, h('span', { class: 'muted small' }, ' — click any group; labels can be changed until you check the answer')), q));
+  watchExternal(() => JSON.stringify(Object.entries(App.store.task(ref)?.groups || {}).map(([g, s]) => [g, s.label, s.revealed])));
 }
 
 // ------------------------------------------------------------------ labeling page
 export async function renderGroup(main, ref, g) {
   const { e, tj, assigned } = await ctxFor(ref);
   if (!assigned.includes(g)) throw new Error('This group is not part of your task.');
-  if (!App.store.state.examples[tj.dataset]?.seenAt) {
-    App.afterExample[tj.dataset] = `#/task/${ref}/g/${g}`;
-    App.go(`#/example/${tj.dataset}`);
-    return;
-  }
-  const blk = blocked(ref);
-  if (blk) { main.appendChild(h('div', { class: 'notice err' }, blk)); return; }
   ensureTaskState(ref, assigned);
-  const T = () => App.store.task(ref);
-  const G = () => App.store.group(ref, g);
-  const t = T();
-  const gs = G();
-  const submitted = gs.status === 'submitted';
-  const editable = gs.status === 'open' && !gs.mergedInto;
-  const meta = tj.groups[g];
   const st = App.store;
+  const T = () => st.task(ref);
+  const G = () => st.group(ref, g);
+  const t = T();
+  const meta = tj.groups[g];
+  const pos = t.order.indexOf(g);
+  const prevG = pos > 0 ? t.order[pos - 1] : null;
+  const nextG = pos < t.order.length - 1 ? t.order[pos + 1] : null;
+  const go = (x) => App.go(x == null ? `#/task/${ref}` : `#/task/${ref}/g/${x}`);
 
   main.className = 'main full';
-  const pos = t.order.indexOf(g);
-  const ng = nextGroup(t, g);
-  const nextHref = ng != null ? `#/task/${ref}/g/${ng}` : `#/task/${ref}`;
-  const clock = timerClock({ ref, label: submitted ? 'answer review (not labeling time)' : 'this group' });
-  const bar = h('div', { class: 'gbar' },
+  const clock = taskClock(ref, { compact: true });
+  main.appendChild(h('div', { class: 'gbar' },
     h('a', { class: 'btn ghost small', href: `#/task/${ref}` }, '← ', e.display),
     h('span', { class: 'gpos' }, `Group ${pos + 1} of ${t.order.length}`),
     clock.el,
-    h('span', { class: 'grow' }));
-  if (editable) {
-    bar.appendChild(h('button', { class: 'btn small', title: 'Move this group to the end of the queue', onclick: () => {
-      st.act('defer', { ref, g }, (s) => { const tk = s.tasks[ref]; tk.order = tk.order.filter((x) => x !== g).concat([g]); const o = st.group(ref, g); o.defers = (o.defers || 0) + 1; });
-      const n = nextGroup(T(), g);
-      App.go(n != null && n !== g ? `#/task/${ref}/g/${n}` : `#/task/${ref}`);
-    } }, 'Do later'));
-  }
-  bar.appendChild(h('a', { class: 'btn small' + (submitted ? ' primary' : ' ghost'), href: nextHref }, ng != null ? 'Next group →' : 'Back to task'));
-  main.appendChild(bar);
+    h('span', { class: 'grow' }),
+    h('button', { class: 'btn small', disabled: prevG == null, onclick: () => go(prevG) }, '← Prev'),
+    h('button', { class: 'btn small primary', onclick: () => go(nextG) }, nextG == null ? 'Back to task' : 'Next →')));
   const ws = h('div', { class: 'ws' });
   main.appendChild(ws);
   const ld = loading(ws, 'Loading group…');
-  const [data, ans] = await Promise.all([loadGroup(e.key, g), submitted ? loadGroupAnswer(tj, g) : null]);
+  const data = await loadGroup(e.key, g);
   ld.remove();
 
-  let ctl;
-  if (submitted) {
-    // ---------------- answer view
-    App.timer.setContext({ type: 'review', ref });
-    const kind = tj.unit === 'block' ? 'blocks' : 'lines';
-    const n = ans.length;
-    const labels = itemLabels(T(), g, n);
-    const res = groupResult(ans, labels, kind);
-    if (JSON.stringify(gs.result) !== JSON.stringify(res)) st.act('result', { ref, g }, () => { G().result = res; });
-    const labList = [];
-    const cov = new Int32Array(n);
-    labels.forEach((L, i) => { if (L) { let k = labList.indexOf(L.label); if (k < 0) { labList.push(L.label); k = labList.length - 1; } cov[i] = k + 1; } });
-    const cnt = (i) => (kind === 'blocks' ? (ans[i] ? [0, 1] : [1, 0]) : ans[i]);
-    const opts = {
-      task: tj, meta, data, dataset: tj.dataset, instanceFields: gs.instanceFields || [], selectable: false,
-      labelOf: (c) => labList[c - 1],
-      answerBadge: (js) => {
-        let a = 0, b = 0, wrong = false;
-        for (const j of js) { const [x, y] = cnt(j); a += x; b += y; const L = labels[j]?.label; if (L && ((L === 'normal' && y) || (L === 'anomaly' && x) || L === 'unknown')) wrong = true; }
-        const txt = kind === 'blocks' ? (b ? 'anomalous' : 'normal') : b ? (a ? `${fmtNum(a)} normal · ${fmtNum(b)} anom.` : 'anomalous') : 'normal';
-        return h('span', { class: 'ansb ' + (wrong ? 'bad' : 'good'), title: 'True label' }, (wrong ? '✗ ' : '✓ ') + txt);
-      },
-      rightPane: () => answerPane({ tj, g, ans, kind, labels, res, n, nextHref, ng, rec: G(), T, filter: (is) => ctl.filterTo(is) }),
-    };
-    ctl = tj.dataset === 'hdfs' ? mountHdfsGroup(ws, opts) : mountLineGroup(ws, opts);
-    setTimeout(() => ctl.model.onCoverage(cov), 0);
-  } else {
-    // ---------------- labeling
-    if (editable) {
-      st.act('open', { ref, g }, () => { const o = G(); o.opens = (o.opens || 0) + 1; });
-      App.timer.setContext({ type: 'label', ref, g });
-    }
-    const mergeCandidates = tj.dataset === 'hdfs' ? null : () => {
-      const asg = new Set(assigned);
-      const mk = digitKey(meta.template);
-      const tk = T();
-      return tj.groups.filter((m) => m.g !== g && asg.has(m.g) && !App.exampleIds.has(m.id)
-        && (m.tid === meta.tid || digitKey(m.template) === mk)
-        && (() => { const s = tk.groups[m.g]; return !s || (s.status === 'open' && !(s.judgments || []).length && !s.mergedInto); })())
-        .map((m) => ({ g: m.g, template: m.template, label: `Group ${tk.order.indexOf(m.g) + 1}` + (tj.dataset === 'bgl' ? ` · ${m.key.join(' ')}` : ` · ${m.key[0]}`) }));
-    };
-    const opts = {
-      task: tj, meta, data, dataset: tj.dataset,
-      instanceFields: gs.instanceFields || [],
-      onInstanceFields: editable ? (f) => st.act('instance-fields', { ref, g, fields: f }, () => { G().instanceFields = f; }) : null,
-      onView: editable ? (ev) => { if (ev.type !== 'tab') st.log('v', { g, ...ev }); } : null,
-      labelOf: (c) => G().judgments[c - 1]?.label,
-      selectable: editable,
-      rightPane: (model) => {
-        if (gs.mergedInto) {
-          return h('div', { class: 'judge' }, h('div', { class: 'jhead' }, 'Your judgment'),
-            h('div', { class: 'notice' }, `This group is included in a merge judgment made in group ${T().order.indexOf(gs.mergedInto.g) + 1}. It is submitted together with that group.`),
-            h('a', { class: 'btn', href: `#/task/${ref}/g/${gs.mergedInto.g}` }, 'Open that group'));
-        }
-        const panel = new JudgePanel({
-          store: st, ref, g, dataset: tj.dataset, rules: App.rules, editable,
-          mergeCandidates, groupTitle: (x) => `group ${T().order.indexOf(x) + 1}`,
-          onConflict: () => App.route(),
-          onSubmitted: () => { App.timer.endSession('submit'); App.route(); },
-        }, model);
-        model.onChange(() => panel.refresh());
-        return panel.el;
-      },
-    };
-    ctl = tj.dataset === 'hdfs' ? mountHdfsGroup(ws, opts) : mountLineGroup(ws, opts);
-    if (gs.mergedInto) {
-      ctl.model.onCoverage(new Int32Array(ctl.model.nItems).fill(1));
-      opts.labelOf = () => { const o = G(); return o.mergedInto ? (T().groups[o.mergedInto.g]?.judgments || []).find((j) => j.id === o.mergedInto.jid)?.label : null; };
-    }
-  }
-  App.cleanup = () => { clock.off(); ctl.destroy(); };
-  watchExternal(() => { const o = G(); return JSON.stringify([o.status, (o.judgments || []).map((j) => j.id), o.mergedInto]); });
-}
-
-function answerPane({ tj, g, ans, kind, labels, res, n, nextHref, ng, rec, T, filter }) {
+  st.act('open', { ref, g }, () => { G().opens = (G().opens || 0) + 1; });
+  const kind = tj.unit === 'block' ? 'blocks' : 'lines';
   const unit = kind === 'blocks' ? 'blocks' : 'lines';
-  const wrong = res.judged - res.correct;
-  const all = wrong === 0 && res.unknown === 0;
-  const pane = h('div', { class: 'judge answer' });
-  pane.appendChild(h('div', { class: 'verdict ' + (all ? 'good' : wrong ? 'bad' : 'unsure') },
-    h('div', { class: 'verdict-big' }, all ? '✓ Correct' : [wrong ? `✗ ${fmtNum(wrong)} of ${fmtNum(res.members)} ${unit} wrong` : null, res.unknown ? `${fmtNum(res.unknown)} can't tell` : null].filter(Boolean).join(' · ')),
-    h('div', { class: 'small' }, `${res.judged ? `Accuracy ${pct(res.correct / res.judged)} · ` : ''}true label: ${fmtNum(res.members - res.anomalies)} normal, ${fmtNum(res.anomalies)} anomalous ${unit}`)));
-  const t = T();
-  const judgs = rec.mergedInto
-    ? [{ ...((t.groups[rec.mergedInto.g]?.judgments || []).find((j) => j.id === rec.mergedInto.jid) || {}), merged: true }]
-    : rec.judgments;
-  pane.appendChild(h('div', { class: 'jhead' }, 'Your judgments'));
-  for (const j of judgs) {
-    if (!j || !j.label) continue;
-    const bits = j.merged ? new Uint8Array(Math.ceil(n / 8)).fill(255) : b64ToBits(j.bits);
-    const ag = judgmentAgreement({ kind, groups: { [g]: ans } }, g, bits, j.label, n);
-    pane.appendChild(h('div', { class: 'jitem' },
-      h('div', { class: 'jitem-head' }, h('span', { class: 'pill lab-' + j.label }, LABEL_NAMES[j.label]),
-        h('span', { class: 'small' }, j.merged ? 'Merged from another group' : `${MODE_NAMES[j.mode]} · ${fmtNum(j.items)} ${j.items === 1 ? (kind === 'blocks' ? 'block' : 'message') : (kind === 'blocks' ? 'blocks' : 'messages')}`),
-        h('span', { class: 'rule-id' }, (j.rules || []).join(', '))),
-      h('div', { class: 'small' }, `${fmtNum(ag.members)} ${unit}: ${fmtNum(ag.normal)} normal / ${fmtNum(ag.anomaly)} anomalous → `, h('strong', { class: ag.agree === ag.members ? 'ok-text' : 'err-text' }, `${fmtNum(ag.agree)} agree`)),
-      ag.wrongItems.length ? h('button', { class: 'btn tiny', onclick: () => filter(ag.wrongItems) }, `Show the ${ag.wrongItems.length} differing ${kind === 'blocks' ? 'block(s)' : 'message(s)'}`) : null));
+  const showAnswers = App.config.showAnswers !== false;
+  let ans = null;
+  let ctl = null;
+
+  // ---------------- label panel
+  const panel = h('div', { class: 'judge' });
+  const labelBtns = {};
+  const status = h('div', { class: 'small muted label-status' });
+  const ruleSel = h('select', { class: 'inp' });
+  const noteInp = h('input', { class: 'inp note-inp', placeholder: 'Note (optional)' });
+  const answerBox = h('div', { class: 'answer-box' });
+
+  const rules = App.rules.rules.filter((r) => r.dataset === tj.dataset || r.dataset === '*');
+  ruleSel.appendChild(h('option', { value: '' }, 'Rule (optional)'));
+  for (const L of ['anomaly', 'normal', 'unknown']) {
+    const rs = rules.filter((r) => r.label === L || (L === 'unknown' && r.label === '*'));
+    if (rs.length) ruleSel.appendChild(h('optgroup', { label: LABEL_NAMES[L] }, rs.map((r) => h('option', { value: r.id }, `${r.id} — ${r.title}`))));
   }
-  pane.appendChild(h('a', { class: 'btn primary wide big', href: nextHref }, ng != null ? 'Next group →' : 'Back to task'));
-  return pane;
+
+  function setLabel(L) {
+    const x = G();
+    if (x.revealed || x.label === L) return;
+    st.act('label', { ref, g, label: L, from: x.label }, () => {
+      const y = G();
+      if (y.label && y.label !== L) y.edits = (y.edits || 0) + 1;
+      y.label = L; y.at = Date.now();
+    });
+    refreshPanel();
+  }
+  const saveRule = () => st.act('rule', { ref, g, rule: ruleSel.value }, () => { G().rule = ruleSel.value; });
+  const saveNote = debounce(() => st.act('note', { ref, g }, () => { G().note = noteInp.value.trim(); }), 400);
+  ruleSel.addEventListener('change', saveRule);
+  noteInp.addEventListener('input', saveNote);
+
+  const seg = h('div', { class: 'seg seg-label big-labels' });
+  for (const [L, key] of [['normal', '1'], ['anomaly', '2'], ['unknown', '3']]) {
+    labelBtns[L] = h('button', { type: 'button', class: `seg-btn lab-${L}`, title: `Key ${key}`, onclick: () => setLabel(L) }, LABEL_NAMES[L]);
+    seg.appendChild(labelBtns[L]);
+  }
+  panel.append(
+    h('div', { class: 'jhead' }, 'Label this group'),
+    h('div', { class: 'small muted' }, `One label for the whole group (${fmtNum(meta.n)} ${unit}).`),
+    seg, status, ruleSel, noteInp, answerBox,
+    h('div', { class: 'nav-row' },
+      h('button', { class: 'btn', disabled: prevG == null, onclick: () => go(prevG) }, '← Prev'),
+      h('button', { class: 'btn primary', onclick: () => go(nextG) }, nextG == null ? 'Back to task' : 'Next →')),
+    h('div', { class: 'small muted keys' }, 'Keys: 1 Normal · 2 Anomalous · 3 Can\'t tell · ← → previous / next'));
+
+  async function refreshPanel() {
+    const x = G();
+    for (const [L, b] of Object.entries(labelBtns)) { b.classList.toggle('on', x.label === L); b.disabled = !!x.revealed; }
+    ruleSel.value = x.rule || '';
+    if (document.activeElement !== noteInp) noteInp.value = x.note || '';
+    ruleSel.disabled = noteInp.disabled = !!x.revealed;
+    status.textContent = x.label
+      ? `Saved: ${LABEL_NAMES[x.label]}${x.edits ? ` · changed ${x.edits}×` : ''}${x.revealed ? ' · locked (answer checked)' : ' · you can still change it'}`
+      : 'Not labeled yet.';
+    clear(answerBox);
+    if (!showAnswers) return;
+    if (!x.revealed) {
+      answerBox.appendChild(h('button', { class: 'btn wide', disabled: !x.label, onclick: checkAnswer }, x.label ? 'Check answer (locks this label)' : 'Check answer — label first'));
+      return;
+    }
+    if (!ans) { ans = await loadGroupAnswer(tj, g); ctl?.refresh(); }
+    const tr = groupTruth(ans, kind);
+    const ok = x.label === tr.truth;
+    const wrong = ans.map((a, i) => [a, i]).filter(([a]) => {
+      const an = kind === 'blocks' ? a : a[1], no = kind === 'blocks' ? 1 - a : a[0];
+      return x.label === 'normal' ? an > 0 : x.label === 'anomaly' ? no > 0 : true;
+    }).map(([, i]) => i);
+    answerBox.appendChild(h('div', { class: 'verdict ' + (x.label === 'unknown' ? 'unsure' : ok ? 'good' : 'bad') },
+      h('div', { class: 'verdict-big' }, x.label === 'unknown' ? `True label: ${LABEL_NAMES[tr.truth]}` : ok ? '✓ Correct' : `✗ True label: ${LABEL_NAMES[tr.truth]}`),
+      h('div', { class: 'small' }, `${fmtNum(tr.normal)} normal and ${fmtNum(tr.anomalous)} anomalous ${unit} in this group.`)));
+    if (wrong.length && x.label !== 'unknown' && wrong.length < ans.length) {
+      answerBox.appendChild(h('button', { class: 'btn tiny', onclick: () => ctl.showOnly(wrong) }, `Show the ${wrong.length} ${kind === 'blocks' ? 'block(s)' : 'message(s)'} that differ`));
+    }
+  }
+
+  async function checkAnswer() {
+    if (!G().label) return;
+    App.timer.endSession('check-answer');
+    st.act('check-answer', { ref, g }, () => { const y = G(); y.revealed = true; y.revealedAt = Date.now(); });
+    App.timer.setContext({ type: 'review', ref });
+    await refreshPanel();
+  }
+
+  const answerBadge = (i) => {
+    if (!ans || !G().revealed) return null;
+    const a = ans[i];
+    const an = kind === 'blocks' ? a : a[1], no = kind === 'blocks' ? 1 - a : a[0];
+    const L = G().label;
+    const bad = (L === 'normal' && an > 0) || (L === 'anomaly' && no > 0);
+    const txt = kind === 'blocks' ? (an ? 'anomalous' : 'normal') : an ? (no ? `${fmtNum(no)} normal · ${fmtNum(an)} anom.` : 'anomalous') : 'normal';
+    return h('span', { class: 'ansb ' + (bad ? 'bad' : 'good'), title: 'True label' }, txt);
+  };
+
+  if (G().revealed) { ans = await loadGroupAnswer(tj, g); App.timer.setContext({ type: 'review', ref }); }
+  else App.timer.setContext({ type: 'label', ref, g });
+
+  const opts = { task: tj, meta, data, dataset: tj.dataset, rightPane: panel, answerBadge };
+  ctl = tj.dataset === 'hdfs' ? mountHdfsGroup(ws, opts) : mountLineGroup(ws, opts);
+  await refreshPanel();
+
+  const onKey = (ev) => {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const tag = (ev.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (ev.key === '1') setLabel('normal');
+    else if (ev.key === '2') setLabel('anomaly');
+    else if (ev.key === '3') setLabel('unknown');
+    else if (ev.key === 'ArrowRight') go(nextG);
+    else if (ev.key === 'ArrowLeft' && prevG != null) go(prevG);
+    else return;
+    ev.preventDefault();
+  };
+  window.addEventListener('keydown', onKey);
+  App.cleanup = () => { window.removeEventListener('keydown', onKey); clock.off(); ctl.destroy(); };
+  watchExternal(() => { const x = G(); return JSON.stringify([x.label, x.revealed, x.rule, x.note]); });
 }
 
 // ------------------------------------------------------------------ worked example
 export async function renderExample(main, ds) {
   const ex = App.examples.examples.find((x) => x.dataset === ds);
   if (!ex) throw new Error('Unknown example.');
-  const cands = App.manifest.tasks.filter((t) => t.dataset === ds);
   let best = null;
-  for (const t of cands) {
+  for (const t of App.manifest.tasks.filter((x) => x.dataset === ds)) {
     const tj = await taskJson(t.key);
     const m = tj.groups.find((x) => x.id === ex.id);
     if (m && (!best || m.n > best.meta.n)) best = { tj, meta: m };
   }
   if (!best) throw new Error('Example group not found in the data.');
   const { tj, meta } = best;
-  main.className = 'main full';
-  const seen = App.store.state.examples[ds]?.seenAt;
   const myTask = App.entries.find((x) => App.manifest.tasks.find((t) => t.key === x.key)?.dataset === ds);
   const back = myTask ? `#/task/${taskRef(myTask)}` : '#/';
-  const next = App.afterExample[ds] || back;
-  const clock = timerClock({ label: 'example (not labeling time)' });
-  main.appendChild(h('div', { class: 'gbar' }, h('a', { class: 'btn ghost small', href: back }, myTask ? `← ${myTask.display}` : '← Home'), h('span', { class: 'gpos' }, ex.title), clock.el, h('span', { class: 'grow' })));
-  if (!seen) main.appendChild(h('div', { class: 'notice ex-intro' }, `Read this worked example once before your first ${DATASET_NAMES[ds]} group: follow the steps on the right, then click “I understand”${App.afterExample[ds] ? ' — you will continue straight to the group you opened.' : '.'}`));
+  main.className = 'main full';
+  main.appendChild(h('div', { class: 'gbar' }, h('a', { class: 'btn ghost small', href: back }, myTask ? `← ${myTask.display}` : '← Home'), h('span', { class: 'gpos' }, ex.title), h('span', { class: 'muted small' }, 'Example only — not part of your task, not timed')));
   const ws = h('div', { class: 'ws' });
   main.appendChild(ws);
   const ld = loading(ws);
   const data = await loadGroup(tj.key, meta.g);
   ld.remove();
-  App.timer.setContext({ type: 'example', ds });
-  const opts = {
-    task: tj, meta, data, dataset: ds, instanceFields: [], labelOf: () => null, selectable: false,
-    rightPane: (model) => {
-      const reqs = h('ul', { class: 'reqs' });
-      const upd = () => { clear(reqs); for (const r of model.reqPropagate()) reqs.appendChild(h('li', { class: r.ok ? 'ok' : 'miss' }, r.text)); };
-      model.onChange(upd);
-      upd();
-      const d = ex.decision;
-      return h('div', { class: 'judge example-pane' },
-        h('div', { class: 'jhead' }, 'Worked example'),
-        h('p', { class: 'small' }, ex.summary),
-        ex.sample ? h('pre', { class: 'sample mono' }, ex.sample) : null,
-        h('h4', null, 'Try it'),
-        h('ol', { class: 'steps' }, ex.steps.map((s) => h('li', null, s))),
-        h('h4', null, 'Checks before a whole-group judgment'),
-        reqs,
-        h('details', { class: 'decision-box' },
-          h('summary', null, 'Show the answer and why'),
-          h('div', { class: 'jitem' }, h('div', { class: 'jitem-head' }, h('span', { class: 'pill lab-' + d.label }, LABEL_NAMES[d.label]), h('span', { class: 'small' }, MODE_NAMES[d.mode]), h('span', { class: 'rule-id' }, d.rules.join(', '))),
-            d.note ? h('div', { class: 'small' }, 'Note: ', d.note) : null),
-          h('p', { class: 'small' }, ex.explanation)),
-        h('button', { class: 'btn primary wide big', onclick: () => {
-          App.store.act('example-understood', { ds }, (s) => { s.examples[ds] = s.examples[ds] || {}; s.examples[ds].seenAt = s.examples[ds].seenAt || Date.now(); });
-          delete App.afterExample[ds];
-          App.go(next);
-        } }, seen ? 'Done' : 'I understand — start labeling'));
-    },
-  };
-  const ctl = ds === 'hdfs' ? mountHdfsGroup(ws, opts) : mountLineGroup(ws, opts);
-  App.cleanup = () => { clock.off(); ctl.destroy(); };
+  const d = ex.decision;
+  const pane = h('div', { class: 'judge example-pane' },
+    h('div', { class: 'jhead' }, 'Worked example'),
+    h('p', { class: 'small' }, ex.summary),
+    ex.sample ? h('pre', { class: 'sample mono' }, ex.sample) : null,
+    h('ol', { class: 'steps' }, ex.steps.map((s) => h('li', null, s))),
+    h('details', { class: 'decision-box' },
+      h('summary', null, 'Show the label'),
+      h('div', { class: 'jitem' }, h('span', { class: 'pill lab-' + d.label }, LABEL_NAMES[d.label]), ' ', h('span', { class: 'rule-id' }, d.rules.join(', '))),
+      h('p', { class: 'small' }, ex.explanation)),
+    h('a', { class: 'btn primary wide', href: back }, myTask ? `Go to ${myTask.display}` : 'Home'));
+  const ctl = ds === 'hdfs' ? mountHdfsGroup(ws, { task: tj, meta, data, dataset: ds, rightPane: pane }) : mountLineGroup(ws, { task: tj, meta, data, dataset: ds, rightPane: pane });
+  App.cleanup = () => ctl.destroy();
 }
-
-export { itemCounts, fmtTime };
