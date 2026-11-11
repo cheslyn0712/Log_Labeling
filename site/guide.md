@@ -107,7 +107,7 @@ Notes:
 **Start**
 
 1. Open the site and enter your participant code (A, B, C or D).
-2. *Home* lists your three tasks with their reference time. Each task links to its dataset's worked example; read it once before you start.
+2. *Home* lists your three tasks with their reference time. Each dataset has two worked examples, one Normal and one Anomalous group; read both before you start. The example groups are the same for everyone and are not part of any task.
 3. Open a task and click **Start labeling**, or click any group in the list.
 
 **The labeling page**

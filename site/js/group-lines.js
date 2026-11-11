@@ -60,7 +60,7 @@ export function mountLineGroup(root, opts) {
     ? [h('span', { class: 'badge' }, 'Component ', h('b', null, meta.key[0])), h('span', { class: 'badge lvl-' + String(meta.key[1]).toLowerCase() }, 'Level ', h('b', null, meta.key[1]))]
     : [h('span', { class: 'badge' }, 'Service ', h('b', null, meta.key[0]))];
   head.appendChild(h('div', { class: 'tpl-row' }, h('span', { class: 'tpl-label' }, 'Template'), tplEl));
-  head.appendChild(h('div', { class: 'badge-row' }, badges, h('span', { class: 'badge' }, h('b', null, fmtNum(M)), ' distinct messages'), h('span', { class: 'badge' }, h('b', null, fmtNum(meta.n)), ' lines')));
+  head.appendChild(h('div', { class: 'badge-row' }, badges, h('span', { class: 'badge' }, h('b', null, fmtNum(M)), M === 1 ? ' distinct message' : ' distinct messages'), h('span', { class: 'badge' }, h('b', null, fmtNum(meta.n)), ' lines')));
 
   // ---------------------------------------------------------------- left: messages / fields
   const tabs = h('div', { class: 'tabs' });
@@ -90,7 +90,7 @@ export function mountLineGroup(root, opts) {
     clear(chips);
     if (fieldFilter) chips.appendChild(h('span', { class: 'chip' }, `F${fieldFilter.i + 1} = ${fieldFilter.v === '' ? '(empty)' : fieldFilter.v}`, h('button', { type: 'button', class: 'chip-x', onclick: () => { fieldFilter = null; applyFilter(); } }, '×')));
     if (onlyRows) chips.appendChild(h('span', { class: 'chip' }, 'differing messages only', h('button', { type: 'button', class: 'chip-x', onclick: () => { onlyRows = null; applyFilter(); } }, '×')));
-    listInfo.textContent = `${fmtNum(M)} messages${shown.length !== M ? ` · ${fmtNum(shown.length)} shown` : ''} · most frequent first · click one to read its raw lines`;
+    listInfo.textContent = `${fmtNum(M)} message${M === 1 ? '' : 's'}${shown.length !== M ? ` · ${fmtNum(shown.length)} shown` : ''} · most frequent first · click one to read its raw lines`;
     list.setCount(shown.length);
   }
 

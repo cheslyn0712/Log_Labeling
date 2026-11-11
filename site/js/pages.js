@@ -109,7 +109,7 @@ export async function renderTask(main, ref) {
       h('div', { class: 'small muted' }, refText(e.display))),
     h('div', { class: 'task-actions' },
       h('a', { class: 'btn primary big', href: `#/task/${ref}/g/${next ?? t.order[0]}` }, done === 0 ? 'Start labeling →' : next != null ? 'Continue →' : 'Review labels'),
-      h('a', { class: 'btn ghost small', href: `#/example/${tj.dataset}` }, `${DATASET_NAMES[tj.dataset]} worked example`))));
+      exampleLinks(tj.dataset))));
   main.appendChild(h('div', { class: 'row gap clock-row' }, h('span', { class: 'small muted' }, 'Task time'), clock.el));
 
   const q = h('div', { class: 'queue' });
@@ -280,8 +280,20 @@ export async function renderGroup(main, ref, g) {
 }
 
 // ------------------------------------------------------------------ worked example
-export async function renderExample(main, ds) {
-  const ex = App.examples.examples.find((x) => x.dataset === ds);
+// links to a dataset's two worked examples (Normal, Anomalous)
+export function exampleLinks(ds, cls = 'small') {
+  const exs = App.examples.examples.filter((x) => x.dataset === ds);
+  const out = [h('span', { class: cls + ' muted' }, `${DATASET_NAMES[ds]} examples: `)];
+  exs.forEach((x, i) => {
+    if (i) out.push(h('span', { class: cls + ' muted' }, ' · '));
+    out.push(h('a', { class: cls, href: `#/example/${ds}/${x.decision.label}` }, LABEL_NAMES[x.decision.label]));
+  });
+  return h('span', { class: 'ex-links' }, out);
+}
+
+export async function renderExample(main, ds, kind) {
+  const exs = App.examples.examples.filter((x) => x.dataset === ds);
+  const ex = exs.find((x) => x.decision.label === kind) || exs[0];
   if (!ex) throw new Error('Unknown example.');
   let best = null;
   for (const t of App.manifest.tasks.filter((x) => x.dataset === ds)) {
@@ -294,7 +306,10 @@ export async function renderExample(main, ds) {
   const myTask = App.entries.find((x) => App.manifest.tasks.find((t) => t.key === x.key)?.dataset === ds);
   const back = myTask ? `#/task/${taskRef(myTask)}` : '#/';
   main.className = 'main full';
-  main.appendChild(h('div', { class: 'gbar' }, h('a', { class: 'btn ghost small', href: back }, myTask ? `← ${myTask.display}` : '← Home'), h('span', { class: 'gpos' }, ex.title), h('span', { class: 'muted small' }, 'Example only — not part of your task, not timed')));
+  const tabs = h('span', { class: 'seg' }, exs.map((x) => h('a', {
+    class: 'seg-btn lab-' + x.decision.label + (x === ex ? ' on' : ''), href: `#/example/${ds}/${x.decision.label}`,
+  }, LABEL_NAMES[x.decision.label] + ' example')));
+  main.appendChild(h('div', { class: 'gbar' }, h('a', { class: 'btn ghost small', href: back }, myTask ? `← ${myTask.display}` : '← Home'), h('span', { class: 'gpos' }, ex.title), tabs, h('span', { class: 'muted small' }, 'Example only — not part of any task, not timed')));
   const ws = h('div', { class: 'ws' });
   main.appendChild(ws);
   const ld = loading(ws);

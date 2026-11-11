@@ -399,3 +399,7 @@ a.qrow:hover { background: var(--accent-2); text-decoration: none; }
 .clock .btn.tiny { padding: 2px 8px; }
 .task-card .ref { color: var(--text); margin-top: 2px; }
 .qstat { width: 170px; }
+.gbar .seg { flex: 0 0 auto; }
+.gbar .seg-btn { padding: 5px 12px; text-decoration: none; white-space: nowrap; }
+.ex-links a { font-weight: 600; }
+.example-pane .sample { white-space: pre-wrap; word-break: break-all; }

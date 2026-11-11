@@ -49,7 +49,7 @@ site/
   index.html, css/, js/     the application (plain JavaScript modules, no build step)
   config.json               answers on/off, idle time, reference times
   guide.md, rules.json      labeling rules (Guide and Rules pages)
-  examples.json             one worked example per dataset (excluded from all tasks)
+  examples.json             two worked examples per dataset, one Normal and one Anomalous (excluded from all tasks)
   data/                     generated task data
 ```
 

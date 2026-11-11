@@ -4,7 +4,7 @@ import { loadManifest, loadTask, loadRules, loadExamples, loadGuide, loadConfig,
 import { Store, storageAvailable, canonicalName, getCurrentName, setCurrentName } from './store.js';
 import { Timer } from './timer.js';
 import { renderMarkdown } from './md.js';
-import { renderTask, renderGroup, renderExample, watchExternal, firstUnlabeled } from './pages.js';
+import { renderTask, renderGroup, renderExample, exampleLinks, watchExternal, firstUnlabeled } from './pages.js';
 import { taskRef, assignedGroups, groupTruth, taskSummary, taskTime, workbook, pct, f1s, hm, LABEL_NAMES } from './report.js';
 import { makeXlsx } from './xlsx.js';
 
@@ -160,7 +160,7 @@ async function route() {
     else if (a === 'guide') await renderGuide();
     else if (a === 'rules') renderRules();
     else if (a === 'results') await renderResults();
-    else if (a === 'example') await renderExample(main, b);
+    else if (a === 'example') await renderExample(main, b, c);
     else if (a === 'task' && b && !c) await renderTask(main, b);
     else if (a === 'task' && c === 'g') await renderGroup(main, b, +d);
     else main.appendChild(h('p', null, 'Page not found. ', h('a', { href: '#/' }, 'Home')));
@@ -222,7 +222,7 @@ async function renderHome() {
         h('div', { class: 'small ref' }, refText(e.display)),
         h('div', { class: 'bar' }, h('div', { class: 'bar-fill', style: { width: (100 * done / Math.max(1, assigned.length)) + '%' } })),
         h('div', { class: 'small' }, `${fmtNum(done)} / ${fmtNum(assigned.length)} labeled · time so far ${hm(ms)}`),
-        h('a', { class: 'small', href: `#/example/${tj.dataset}` }, `${DATASET_NAMES[tj.dataset]} worked example →`)),
+        h('div', null, exampleLinks(tj.dataset))),
       h('div', { class: 'task-act' }, h('a', { class: 'btn primary', href: t && next != null && done ? `#/task/${ref}/g/${next}` : `#/task/${ref}` }, done ? (done < assigned.length ? 'Continue →' : 'Open') : 'Start →'))));
   });
   main.appendChild(h('section', { class: 'sec' }, h('h2', null, 'Your tasks', h('span', { class: 'muted small' }, ' — any order')), box,

@@ -1,10 +1,10 @@
 {
-  "note": "Worked examples. These groups are excluded from every queue, group count, member count, time total and accuracy figure.",
+  "note": "Worked examples: one Normal and one Anomalous group per dataset, the same for every participant. These groups are excluded from every task, group count, member count, time total and accuracy figure.",
   "examples": [
     {
       "dataset": "bgl",
       "id": "B2940ad74e929",
-      "title": "BGL worked example",
+      "title": "BGL worked example — Normal",
       "summary": "Template <*> L3 <*> error(s) (dcr <*> detected and corrected — component KERNEL, level INFO.",
       "sample": "… RAS KERNEL INFO 1 L3 EDRAM error(s) (dcr 0x0157) detected and corrected",
       "steps": [
@@ -23,9 +23,30 @@
       "explanation": "B-N01 decides for every line of the group: the severity is INFO. The word “error” in the message does not matter; only FATAL and FAILURE lines can be alerts, and only when an alert rule matches. Label for the group: Normal."
     },
     {
+      "dataset": "bgl",
+      "id": "B6c2424735f0c",
+      "title": "BGL worked example — Anomalous",
+      "summary": "Template Lustre mount FAILED : <*> : block_id : location — component KERNEL, level FATAL.",
+      "sample": "… RAS KERNEL FATAL Lustre mount FAILED : bglio17 : block_id : location",
+      "steps": [
+        "Read the header: component KERNEL, severity FATAL. B-N01 does not apply: FATAL lines can be alerts, so go through B-A01 … B-A11.",
+        "B-A04 needs the phrase Lustre mount FAILED. The phrase lies in the fixed text of the template, so it matches every line of the group.",
+        "Open the Fields tab: field 1 is the I/O node (bglio16, bglio17, …). The node is a detail of the failure; it does not change the rule."
+      ],
+      "decision": {
+        "mode": "propagate",
+        "label": "anomaly",
+        "rules": [
+          "B-A04"
+        ],
+        "note": ""
+      },
+      "explanation": "B-A04 matches every line of the group: Lustre mount FAILED is part of the template's fixed text. One matching line is already enough for the group. Label for the group: Anomalous."
+    },
+    {
       "dataset": "tb",
       "id": "Tc15871ca049d",
-      "title": "Thunderbird worked example",
+      "title": "Thunderbird worked example — Normal",
       "summary": "Template <*> <*> succeeded — service acpid.",
       "sample": "acpid: acpid startup succeeded  /  acpid: acpid shutdown succeeded",
       "steps": [
@@ -44,9 +65,30 @@
       "explanation": "No rule T-A01 … T-A10 applies to any line of the group, so T-N01 decides. Label for the group: Normal."
     },
     {
+      "dataset": "tb",
+      "id": "T8a2f744c6b8d",
+      "title": "Thunderbird worked example — Anomalous",
+      "summary": "Template [KERNEL_IB][tsIbTavorMadProcess][…/tavor_mad.c:<*>]InfiniHost0: EVAPI_process_local_mad failed, return code = -<*> (Fatal error (Local Catastrophic Error)) — service kernel.",
+      "sample": "kernel: [KERNEL_IB][tsIbTavorMadProcess][/mnt_projects/…/tavor_mad.c:152]InfiniHost0: EVAPI_process_local_mad failed, return code = -254 (Fatal error (Local Catastrophic Error))",
+      "steps": [
+        "T-A01 needs both [KERNEL_IB] and Local Catastrophic Error. Both lie in the fixed text of the template, so every line of the group matches.",
+        "Open the Fields tab: the values are a software version, a build directory, a source line and a return code. They do not affect the rule.",
+        "Click the message and open the context of one line. Context does not change the label; it only shows the surrounding records."
+      ],
+      "decision": {
+        "mode": "propagate",
+        "label": "anomaly",
+        "rules": [
+          "T-A01"
+        ],
+        "note": ""
+      },
+      "explanation": "T-A01 matches every line of the group. Label for the group: Anomalous. Not every [KERNEL_IB] message is an alert: Local Catastrophic Error must be in the line as well."
+    },
+    {
       "dataset": "hdfs",
       "id": "H90039c1fc384",
-      "title": "HDFS worked example",
+      "title": "HDFS worked example — Normal",
       "summary": "Count vector: allocate T22×1; write three replicas T5, T9, T11, T26 ×3 each; read T3×1 and T4 (Got exception while serving) ×2; verify T2×3; file deletion T23, T21 ×3 each.",
       "sample": "",
       "steps": [
@@ -63,6 +105,27 @@
         "note": ""
       },
       "explanation": "No rule above H-N01 applies, so H-N01 decides. All blocks of the group share the count vector, so the group gets one label: Normal. The order of events does not matter."
+    },
+    {
+      "dataset": "hdfs",
+      "id": "H9e59f29d7c0c",
+      "title": "HDFS worked example — Anomalous",
+      "summary": "Count vector: allocate T22×1; write three replicas T5, T9, T11 ×3 each, T26×4; file deletion T23, T21 ×3 each; T28 (addStoredBlock request received … But it does not belong to any file) ×1.",
+      "sample": "BLOCK* NameSystem.addStoredBlock: addStoredBlock request received for blk_… on 10.251.106.10:50010 size 67108864 But it does not belong to any file.",
+      "steps": [
+        "H-A01: the count vector contains T28, one of the failure events. No other rule needs to be checked.",
+        "Open a block's log and find the T28 line: after the file was deleted (T23, T21), a data node reported the block again and the name node answered that the block does not belong to any file.",
+        "The rest of the trace is a complete write. One failure event is enough to make the block anomalous."
+      ],
+      "decision": {
+        "mode": "propagate",
+        "label": "anomaly",
+        "rules": [
+          "H-A01"
+        ],
+        "note": ""
+      },
+      "explanation": "H-A01 decides: T28 is in the count vector (Xu et al., Table 7, type 5: received block that does not belong to any file). All blocks of the group share the count vector, so the group gets one label: Anomalous."
     }
   ]
 }
