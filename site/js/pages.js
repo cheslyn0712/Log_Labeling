@@ -3,7 +3,7 @@ import { h, clear, fmtNum, seededShuffle, debounce } from './util.js';
 import { loadGroup, loadGroupAnswer } from './data.js';
 import { mountLineGroup } from './group-lines.js';
 import { mountHdfsGroup } from './group-hdfs.js';
-import { App, entryByRef, taskJson, DATASET_NAMES, refText } from './app.js';
+import { App, entryByRef, taskJson, DATASET_NAMES, refText, accRefText } from './app.js';
 import { assignedGroups, taskRef, groupTruth, taskTime, hm, LABEL_NAMES, scoredLabel } from './report.js';
 
 function loading(el, text = 'Loading…') { const x = h('div', { class: 'loading' }, h('span', { class: 'spinner' }), text); el.appendChild(x); return x; }
@@ -106,7 +106,8 @@ export async function renderTask(main, ref) {
         h('span', null, h('strong', null, `${fmtNum(done)} / ${fmtNum(assigned.length)}`), ' groups labeled'),
         h('span', null, `${fmtNum(members)} ${unit}`)),
       h('div', { class: 'bar' }, h('div', { class: 'bar-fill', style: { width: (100 * done / Math.max(1, assigned.length)) + '%' } })),
-      h('div', { class: 'small muted' }, refText(e.display))),
+      h('div', { class: 'small muted' }, refText(e.display)),
+      h('div', { class: 'small muted' }, accRefText(e.display))),
     h('div', { class: 'task-actions' },
       h('a', { class: 'btn primary big', href: `#/task/${ref}/g/${next ?? t.order[0]}` }, done === 0 ? 'Start labeling →' : next != null ? 'Continue →' : 'Review labels'),
       exampleLinks(tj.dataset))));

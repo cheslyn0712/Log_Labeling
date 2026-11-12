@@ -2,12 +2,21 @@
   "showAnswers": true,
   "idleSeconds": 60,
   "timeReference": {
-    "BGL Task A": { "typical": 3.5, "low": 2, "high": 6.5 },
-    "BGL Task B": { "typical": 7.5, "low": 4.5, "high": 13.5 },
-    "Thunderbird Task A": { "typical": 23, "low": 14, "high": 41 },
-    "Thunderbird Task B": { "typical": 7, "low": 4.5, "high": 13 },
-    "HDFS Task A": { "typical": 1, "low": 0.5, "high": 2 },
-    "HDFS Task B": { "typical": 2.5, "low": 1.5, "high": 4 }
+    "BGL DELAD": { "typical": 3.5, "low": 2, "high": 6.5 },
+    "BGL LogGPT": { "typical": 7.5, "low": 4.5, "high": 13.5 },
+    "Thunderbird LogGPT": { "typical": 23, "low": 14, "high": 41 },
+    "Thunderbird DELAD": { "typical": 7, "low": 4.5, "high": 13 },
+    "HDFS DELAD": { "typical": 1, "low": 0.5, "high": 2 },
+    "HDFS LogGPT": { "typical": 2.5, "low": 1.5, "high": 4 }
   },
-  "timeReferenceNote": "Effective labeling time, estimated per group: about 1 min for a group with one distinct message, 2 min for up to 20 distinct messages, 4 min for more; HDFS about 1.5 / 2.5 / 3.5 min for 1 / 2-10 / more event orders. Range = 0.6x to 1.8x the typical value."
+  "timeReferenceNote": "Effective labeling time, estimated per group: about 1 min for a group with one distinct message, 2 min for up to 20 distinct messages, 4 min for more; HDFS about 1.5 / 2.5 / 3.5 min for 1 / 2-10 / more event orders. Range = 0.6x to 1.8x the typical value.",
+  "accuracyReference": {
+    "BGL DELAD": 0.941,
+    "BGL LogGPT": 0.989,
+    "Thunderbird LogGPT": 1.0,
+    "Thunderbird DELAD": 1.0,
+    "HDFS DELAD": 1.0,
+    "HDFS LogGPT": 0.931
+  },
+  "accuracyReferenceNote": "Reference accuracy: the share of groups whose true label the Guide's rules give when they are applied exactly (group level, worked examples excluded)."
 }

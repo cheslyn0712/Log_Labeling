@@ -27,6 +27,11 @@ export function refText(display) {
   return r ? `Reference time: about ${r.typical} h (range ${r.low}–${r.high} h) of effective labeling.` : '';
 }
 
+export function accRefText(display) {
+  const a = App.config.accuracyReference?.[display.replace(/\s*\(.*\)$/, '')];
+  return a == null ? '' : `Reference accuracy: ${(100 * a).toFixed(1)}% of groups (the rules applied exactly).`;
+}
+
 const root = document.getElementById('app');
 const topbar = h('header', { class: 'topbar' });
 const banner = h('div', { class: 'banners' });
@@ -220,13 +225,14 @@ async function renderHome() {
         h('div', { class: 'task-title' }, h('a', { href: `#/task/${ref}` }, e.display)),
         h('div', { class: 'small muted' }, `${fmtNum(assigned.length)} groups · ${DATASET_NAMES[tj.dataset]}`),
         h('div', { class: 'small ref' }, refText(e.display)),
+        h('div', { class: 'small ref' }, accRefText(e.display)),
         h('div', { class: 'bar' }, h('div', { class: 'bar-fill', style: { width: (100 * done / Math.max(1, assigned.length)) + '%' } })),
         h('div', { class: 'small' }, `${fmtNum(done)} / ${fmtNum(assigned.length)} labeled · time so far ${hm(ms)}`),
         h('div', null, exampleLinks(tj.dataset))),
       h('div', { class: 'task-act' }, h('a', { class: 'btn primary', href: t && next != null && done ? `#/task/${ref}/g/${next}` : `#/task/${ref}` }, done ? (done < assigned.length ? 'Continue →' : 'Open') : 'Start →'))));
   });
   main.appendChild(h('section', { class: 'sec' }, h('h2', null, 'Your tasks', h('span', { class: 'muted small' }, ' — any order')), box,
-    h('p', { class: 'small muted' }, `Time so far: ${hm(totalMs)}. ${App.config.timeReferenceNote || ''}`)));
+    h('p', { class: 'small muted' }, `Time so far: ${hm(totalMs)}. ${App.config.timeReferenceNote || ''} ${App.config.accuracyReferenceNote || ''}`)));
 
   main.appendChild(h('section', { class: 'sec card' },
     h('h3', null, 'How to label'),
