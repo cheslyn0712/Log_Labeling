@@ -4,7 +4,7 @@ import { loadGroup, loadGroupAnswer } from './data.js';
 import { mountLineGroup } from './group-lines.js';
 import { mountHdfsGroup } from './group-hdfs.js';
 import { App, entryByRef, taskJson, DATASET_NAMES, refText } from './app.js';
-import { assignedGroups, taskRef, groupTruth, taskTime, hm, LABEL_NAMES } from './report.js';
+import { assignedGroups, taskRef, groupTruth, taskTime, hm, LABEL_NAMES, scoredLabel } from './report.js';
 
 function loading(el, text = 'Loading…') { const x = h('div', { class: 'loading' }, h('span', { class: 'spinner' }), text); el.appendChild(x); return x; }
 
@@ -122,7 +122,7 @@ export async function renderTask(main, ref) {
         x?.revealed ? h('span', { class: 'small muted' }, ' · checked') : null),
       h('span', { class: 'qtpl mono' }, groupTitle(tj, g))));
   });
-  main.appendChild(h('section', { class: 'sec' }, h('h2', null, `Groups (${fmtNum(t.order.length)})`, h('span', { class: 'muted small' }, ' — click any group; labels can be changed until you check the answer')), q));
+  main.appendChild(h('section', { class: 'sec' }, h('h2', null, `Groups (${fmtNum(t.order.length)})`, h('span', { class: 'muted small' }, ' — click any group; labels can always be changed')), q));
   watchExternal(() => JSON.stringify(Object.entries(App.store.task(ref)?.groups || {}).map(([g, s]) => [g, s.label, s.revealed])));
 }
 
@@ -178,11 +178,18 @@ export async function renderGroup(main, ref, g) {
     if (rs.length) ruleSel.appendChild(h('optgroup', { label: LABEL_NAMES[L] }, rs.map((r) => h('option', { value: r.id }, `${r.id} — ${r.title}`))));
   }
 
+  // A label can always be changed. After the answer was checked, the label held at that moment
+  // stays the scored one (labelAtCheck); the change is saved and counted as a correction.
   function setLabel(L) {
     const x = G();
-    if (x.revealed || x.label === L) return;
-    st.act('label', { ref, g, label: L, from: x.label }, () => {
+    if (x.label === L) return;
+    if (x.revealed && !confirm(`You have already checked the answer for this group.\n\nChange your label from ${LABEL_NAMES[x.label]} to ${LABEL_NAMES[L]}?\n\nThe new label is saved. Your label from before the answer stays in your results as the scored label.`)) return;
+    st.act('label', { ref, g, label: L, from: x.label, afterAnswer: !!x.revealed }, () => {
       const y = G();
+      if (y.revealed) {
+        if (y.labelAtCheck === undefined) y.labelAtCheck = y.label;
+        y.editsAfterAnswer = (y.editsAfterAnswer || 0) + 1;
+      }
       if (y.label && y.label !== L) y.edits = (y.edits || 0) + 1;
       y.label = L; y.at = Date.now();
     });
@@ -209,17 +216,18 @@ export async function renderGroup(main, ref, g) {
 
   async function refreshPanel() {
     const x = G();
-    for (const [L, b] of Object.entries(labelBtns)) { b.classList.toggle('on', x.label === L); b.disabled = !!x.revealed; }
+    for (const [L, b] of Object.entries(labelBtns)) b.classList.toggle('on', x.label === L);
     ruleSel.value = x.rule || '';
     if (document.activeElement !== noteInp) noteInp.value = x.note || '';
-    ruleSel.disabled = noteInp.disabled = !!x.revealed;
-    status.textContent = x.label
-      ? `Saved: ${LABEL_NAMES[x.label]}${x.edits ? ` · changed ${x.edits}×` : ''}${x.revealed ? ' · locked (answer checked)' : ' · you can still change it'}`
-      : 'Not labeled yet.';
+    const scored = scoredLabel(x);
+    status.textContent = !x.label ? 'Not labeled yet.'
+      : x.revealed && scored !== x.label ? `Saved: ${LABEL_NAMES[x.label]} · changed after the answer (scored: ${LABEL_NAMES[scored]})`
+      : `Saved: ${LABEL_NAMES[x.label]}${x.edits ? ` · changed ${x.edits}×` : ''}${x.revealed ? ' · answer checked' : ''} · click another label to change it`;
     clear(answerBox);
     if (!showAnswers) return;
     if (!x.revealed) {
-      answerBox.appendChild(h('button', { class: 'btn wide', disabled: !x.label, onclick: checkAnswer }, x.label ? 'Check answer (locks this label)' : 'Check answer — label first'));
+      answerBox.appendChild(h('button', { class: 'btn wide', disabled: !x.label, onclick: checkAnswer, title: 'Your label at this moment is the one that is scored.' },
+        x.label ? `Check answer (your label: ${LABEL_NAMES[x.label]})` : 'Check answer — label first'));
       return;
     }
     if (!ans) { ans = await loadGroupAnswer(tj, g); ctl?.refresh(); }
@@ -240,7 +248,7 @@ export async function renderGroup(main, ref, g) {
   async function checkAnswer() {
     if (!G().label) return;
     App.timer.endSession('check-answer');
-    st.act('check-answer', { ref, g }, () => { const y = G(); y.revealed = true; y.revealedAt = Date.now(); });
+    st.act('check-answer', { ref, g }, () => { const y = G(); y.revealed = true; y.revealedAt = Date.now(); y.labelAtCheck = y.label; });
     App.timer.setContext({ type: 'review', ref });
     await refreshPanel();
   }

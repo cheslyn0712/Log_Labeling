@@ -8,7 +8,7 @@ There is no server and no database. Everything under `site/` is served as-is by 
 
 1. Enter the participant code. *Home* lists the three tasks with a reference time for each.
 2. Open a group, read its messages (or block logs), and click a label (keys 1 / 2 / 3). Labels are saved at once and can be changed. Choosing a rule and writing a note are optional.
-3. Optionally check the group's true label; this locks the label of that group.
+3. Optionally check the group's true label. Labels can be changed at any time; if the answer was checked, the label held at that moment is the scored one and later changes are recorded.
 4. The task timer runs while a group is open and the participant is active; it can be paused, resumed and adjusted.
 5. On *Results*, download the Excel file and send it to the PI.
 
@@ -19,10 +19,12 @@ The labeling rules are on the Guide page (`site/guide.md`) and the Rules page (`
 | Sheet | Content |
 |---|---|
 | Summary | per task: groups labeled, time (with manual adjustments), and at group and line/block level: accuracy, precision, recall, F1 (anomalous class), can't-tell rate |
-| Groups | every group: label, rule, note, time, number of label changes, whether the answer was checked, true normal / anomalous counts, true group label |
+| Groups | every group: scored label, rule, note, time, number of label changes, whether the answer was checked, final label and changes after the answer, true normal / anomalous counts, true group label |
 | Time log | every pause, resume and time adjustment |
 
 The true label of a group is Anomalous if any of its lines (HDFS: blocks) is anomalous. Can't tell is left out of accuracy and precision and counts as a miss in recall.
+
+Labels can be changed at any time. For a group whose answer was checked, the label held at that moment is the scored one (`label` in *Groups*, and all metrics); the current label is `final_label`. `changed_after_answer` in *Summary* counts groups whose final label differs from the scored one.
 
 ## Configuration
 

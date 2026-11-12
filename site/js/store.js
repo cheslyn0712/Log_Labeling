@@ -29,7 +29,10 @@ export function setCurrentName(n) {
 
 export function taskFps(manifest) { return Object.fromEntries(manifest.tasks.map((t) => [t.key, t.fp])); }
 
-function hasProgress(t) { return Object.values(t.groups || {}).some((g) => g.status !== 'open' || (g.judgments || []).length); }
+// a group counts as progress once it has a label (older records: a status other than 'open' or a judgment)
+function hasProgress(t) {
+  return Object.values(t.groups || {}).some((g) => g.label != null || (g.status !== undefined && g.status !== 'open') || (g.judgments || []).length);
+}
 
 // task refs with progress that cannot be carried over to the data the site serves now
 export function incompatibleTasks(state, manifest) {

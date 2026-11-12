@@ -122,9 +122,9 @@ Notes:
 
 1. Read the header and go through the dataset's rule table from the top.
 2. BGL / Thunderbird: if a rule phrase lies in the template's fixed text, it applies to every line of the group. If the phrase covers a `<*>` field (for example `machine check <*>` or `<*> TLB error interrupt`), open **Fields** and check whether any value completes the phrase. HDFS: the rules depend only on the count vector; open two or three blocks to see the events.
-3. Click **Normal**, **Anomalous** or **Can't tell** (or press 1, 2, 3). The label is saved at once and can be changed by clicking another label.
+3. Click **Normal**, **Anomalous** or **Can't tell** (or press 1, 2, 3). The label is saved at once. Clicked the wrong one? Click the right label; you can come back to any group and change its label at any time.
 4. Optionally pick the rule and write a note.
-5. Optionally click **Check answer**: the true label of the group is shown and your label is locked. Labels you have not checked stay editable.
+5. Optionally click **Check answer**: the true label of the group is shown. Make sure your label is the one you mean first: the label you have when you check is the one that is scored. You can still change the label afterwards (for example after a slip of the mouse); the change is saved and recorded.
 6. Click **Next →** (or press →).
 
 **Task timer**
